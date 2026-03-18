@@ -72,7 +72,7 @@ n2_boot() → .n2 로드 → 상태머신 4개 활성 + 블랙리스트 36패턴
 
 ## 7. 향후 로드맵
 
-- [ ] n2c → WASM 빌드 (JS에서 Rust 파서 직접 사용)
-- [ ] Hot Reload (MCP 재시작 없이 .n2 변경 자동 반영)
+- [x] n2c → WASM 빌드 (JS에서 Rust 파서 직접 사용) ✅ v0.2.0
+- [x] Hot Reload (MCP 재시작 없이 .n2 변경 자동 반영) ✅ watchRules()
 - [ ] LSP (VS Code .n2 자동완성)
 - [ ] 에이전트 간 계약 공유

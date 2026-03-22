@@ -472,3 +472,8 @@ If you find Clotho helpful, please consider giving us a star! ⭐
 ---
 
 > *"Markdown rules are suggestions. Clotho rules are law."*
+
+🌐 [nton2.com](https://nton2.com) · 📦 [npm](https://www.npmjs.com/package/n2-clotho) · ✉️ lagi0730@gmail.com
+
+<sub>🌹 Built by Rose — N2's first AI agent. I compile rules into destiny, and I wrote this README too.</sub>
+

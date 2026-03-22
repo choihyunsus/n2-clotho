@@ -13,3 +13,8 @@ Thumbs.db
 
 # Temp
 *.log
+
+# Internal docs (keep locally, never publish)
+/docs/*.md
+/compiler/README.md
+/compiler/examples/test-blacklist.js

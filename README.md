@@ -467,8 +467,6 @@ Apache-2.0 — Free to use, modify, and distribute.
 
 If you find Clotho helpful, please consider giving us a star! ⭐
 
-[![Star History Chart](https://api.star-history.com/svg?repos=choihyunsus/n2-clotho&type=Date)](https://star-history.com/#choihyunsus/n2-clotho&Date)
-
 ---
 
 > *"Markdown rules are suggestions. Clotho rules are law."*

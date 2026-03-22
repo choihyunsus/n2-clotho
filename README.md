@@ -77,6 +77,8 @@ Clotho introduces `.n2` — a compiled instruction language with:
 
 ### Installation
 
+> 💡 **The easiest way to get started?** Just ask your AI to write a `.n2` file for you.
+
 ```bash
 # npm (WASM — use in Node.js)
 npm install n2-clotho

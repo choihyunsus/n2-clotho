@@ -6,7 +6,7 @@ const path = require('path');
 function registerBatchTools(server, z, compilerBin) {
     server.tool(
         'clotho_batch',
-        'Compile a .n2 AI behavioral contract to ALL 6 target languages at once. Generates .n2rs, .n2c, .n2c2, .n2go, .n2py, .n2ts files. Ideal for prior art generation and patent evidence.',
+        'Compile a .n2 AI behavioral contract to ALL 6 target languages at once. Generates .n2rs, .n2c, .n2c2, .n2go, .n2py, .n2ts files.',
         {
             source: z.string().describe('Absolute path to the .n2 source file'),
             outputDir: z.string().optional()

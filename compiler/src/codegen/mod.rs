@@ -1,5 +1,5 @@
 // CodeGenerator trait + backend registry for multi-target compilation
-use crate::ast::N2File;
+use crate::ast::{N2File, TransitionStmt};
 use std::fmt;
 
 /// Compilation metadata embedded in every compiled output
@@ -110,6 +110,27 @@ pub fn extract_meta(ast: &N2File) -> (String, String) {
         }
     }
     (name, version)
+}
+
+/// Extract unique states from transitions in insertion order
+pub fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
+    let mut seen = Vec::new();
+    for t in transitions {
+        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
+        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
+    }
+    seen
+}
+
+/// Clean a blacklist pattern by stripping regex-style /pattern/flags syntax
+pub fn clean_pattern(p: &str) -> &str {
+    if p.starts_with('/') {
+        let inner = &p[1..];
+        if let Some(end) = inner.rfind('/') {
+            return &inner[..end];
+        }
+    }
+    p
 }
 
 pub mod rust;

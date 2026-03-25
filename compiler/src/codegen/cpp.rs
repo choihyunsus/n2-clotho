@@ -1,6 +1,6 @@
 // C++ codegen backend — AST to .n2c2 compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
 
 pub struct CppBackend;
 
@@ -19,6 +19,7 @@ impl CodeGenerator for CppBackend {
                 Block::Contract(ct) => emit_contract(&mut out, ct),
                 Block::Rule(r) => emit_rule(&mut out, r),
                 Block::Workflow(w) => emit_workflow(&mut out, w),
+                // Schema codegen is only supported for Rust target
                 _ => {}
             }
         }
@@ -134,7 +135,7 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
     out.push_str("    static bool checkBlacklist(const std::string& input) {\n");
     out.push_str("        static const std::vector<std::string> patterns = {\n");
     for p in &rule.blacklist {
-        let clean = p.trim_matches('/').trim_end_matches('i');
+            let clean = clean_pattern(p);
         out.push_str(&format!("            \"{}\",\n", clean));
     }
     out.push_str("        };\n");
@@ -156,13 +157,4 @@ fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
         out.push_str(&format!("        \"{}\",\n", step.name));
     }
     out.push_str("    };\n};\n\n");
-}
-
-fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
-    let mut seen = Vec::new();
-    for t in transitions {
-        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
-        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
-    }
-    seen
 }

@@ -1,4 +1,4 @@
-// n2c — .n2 언어 컴파일러 CLI (파싱 + 검증 + 계약 + 쿼리 + 멀티 타겟 코드생성)
+// n2c — .n2 compiler CLI (parsing + validation + contract + query + multi-target codegen)
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -8,7 +8,7 @@ use n2_compiler::contract::ContractRuntime;
 use n2_compiler::query::N2Registry;
 use n2_compiler::codegen::{BackendRegistry, CompilationMeta, extract_meta};
 
-const VERSION: &str = "3.0.0";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -24,27 +24,25 @@ fn main() {
         return;
     }
 
-    let (command, filepath, extra) = if args.len() >= 4 {
-        (args[1].as_str(), &args[2], Some(args[3].clone()))
-    } else if args.len() >= 3 {
-        (args[1].as_str(), &args[2], None)
+    let (command, filepath) = if args.len() >= 3 {
+        (args[1].as_str(), &args[2])
     } else {
-        ("parse", &args[1], None)
+        ("parse", &args[1])
     };
 
     let source = match fs::read_to_string(filepath) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("❌ 파일 읽기 실패 [{}]: {}", filepath, e);
+            eprintln!("❌ Failed to read file [{}]: {}", filepath, e);
             std::process::exit(1);
         }
     };
 
     println!("🔧 n2c v{} — Clotho compiler", VERSION);
-    println!("📄 파일: {}", filepath);
+    println!("📄 File: {}", filepath);
     println!();
 
-    // Step 1: 파싱
+    // Step 1: Parse
     let ast = match parse_n2(&source) {
         Ok(ast) => ast,
         Err(e) => {
@@ -57,10 +55,10 @@ fn main() {
         "parse" => cmd_parse(&ast),
         "validate" => cmd_validate(&ast),
         "simulate" => cmd_simulate(&ast),
-        "query" => cmd_query(&ast, extra),
-        "compile" => cmd_compile(&ast, filepath, extra),
+        "query" => cmd_query(&ast, args.get(3).cloned()),
+        "compile" => cmd_compile(&ast, filepath, &args[3..]),
         _ => {
-            eprintln!("❌ 알 수 없는 명령: '{}'", command);
+            eprintln!("❌ Unknown command: '{}'", command);
             print_usage();
             std::process::exit(1);
         }
@@ -70,31 +68,31 @@ fn main() {
 fn print_usage() {
     eprintln!("🔧 n2c v{} — Clotho multi-target compiler", VERSION);
     eprintln!();
-    eprintln!("사용법:");
-    eprintln!("  n2c <파일.n2>                                 파싱 + AST JSON 출력");
-    eprintln!("  n2c validate <파일.n2>                        파싱 + 검증 + 계약 체크");
-    eprintln!("  n2c simulate <파일.n2>                        계약 상태머신 시뮬레이션");
-    eprintln!("  n2c query <파일.n2> \"SELECT * FROM rules\"     SQL 쿼리");
-    eprintln!("  n2c compile <파일.n2> --target <TARGET>       지정 타겟으로 컴파일");
-    eprintln!("  n2c compile <파일.n2> --target all            전체 타겟 일괄 컴파일");
-    eprintln!("  n2c backends                                  지원 백엔드 목록");
+    eprintln!("Usage:");
+    eprintln!("  n2c <file.n2>                                 Parse + AST JSON output");
+    eprintln!("  n2c validate <file.n2>                        Parse + validate + contract check");
+    eprintln!("  n2c simulate <file.n2>                        Contract state machine simulation");
+    eprintln!("  n2c query <file.n2> \"SELECT * FROM rules\"     SQL query");
+    eprintln!("  n2c compile <file.n2> --target <TARGET>       Compile to specific target");
+    eprintln!("  n2c compile <file.n2> --target all            Compile to all targets");
+    eprintln!("  n2c backends                                  List supported backends");
     eprintln!();
-    eprintln!("타겟: rust(.n2rs) | c(.n2c) | cpp(.n2c2) | go(.n2go) | python(.n2py) | ts(.n2ts)");
+    eprintln!("Targets: rust(.n2rs) | c(.n2c) | cpp(.n2c2) | go(.n2go) | python(.n2py) | ts(.n2ts)");
 }
 
 fn cmd_parse(ast: &n2_compiler::ast::N2File) {
     let json = serde_json::to_string_pretty(ast).unwrap();
-    println!("✅ 파싱 성공! AST:");
+    println!("✅ Parse success! AST:");
     println!("{}", json);
     print_summary(ast);
 }
 
 fn cmd_validate(ast: &n2_compiler::ast::N2File) {
-    println!("── Step 1: 파싱 ✅");
+    println!("── Step 1: Parse ✅");
     print_summary(ast);
 
     println!();
-    println!("── Step 2: 스키마 검증");
+    println!("── Step 2: Schema Validation");
     let errors = validator::validate(ast);
     let error_count = errors.iter()
         .filter(|e| e.severity == validator::Severity::Error)
@@ -108,17 +106,17 @@ fn cmd_validate(ast: &n2_compiler::ast::N2File) {
     }
 
     if error_count == 0 && warn_count == 0 {
-        println!("  ✅ 검증 통과! 에러 0, 경고 0");
+        println!("  ✅ Validation passed! 0 errors, 0 warnings");
     } else {
-        println!("  결과: ❌ {} 에러, ⚠️ {} 경고", error_count, warn_count);
+        println!("  Result: ❌ {} errors, ⚠️ {} warnings", error_count, warn_count);
     }
 
     println!();
-    println!("── Step 3: 계약 체크");
+    println!("── Step 3: Contract Check");
     let runtime = ContractRuntime::from_file(ast);
 
     if runtime.machines.is_empty() {
-        println!("  ℹ️ 상태머신 계약 없음 (스킵)");
+        println!("  ℹ️ No state machine contracts (skipped)");
     } else {
         println!("{}", runtime.summary().lines()
             .map(|l| format!("  {}", l))
@@ -127,7 +125,7 @@ fn cmd_validate(ast: &n2_compiler::ast::N2File) {
 
         let violations = runtime.check_integrity();
         if violations.is_empty() {
-            println!("  ✅ 상태머신 무결성 검증 통과!");
+            println!("  ✅ State machine integrity check passed!");
         } else {
             for v in &violations {
                 println!("  {}", v);
@@ -137,19 +135,19 @@ fn cmd_validate(ast: &n2_compiler::ast::N2File) {
 
     println!();
     if error_count > 0 {
-        println!("🚨 검증 실패: {} 에러 발견", error_count);
+        println!("🚨 Validation failed: {} errors found", error_count);
         std::process::exit(1);
     } else {
-        println!("✅ 검증 완료: 모든 체크 통과!");
+        println!("✅ Validation complete: all checks passed!");
     }
 }
 
 fn cmd_simulate(ast: &n2_compiler::ast::N2File) {
-    println!("── 계약 상태머신 시뮬레이션");
+    println!("── Contract state machine simulation");
     let runtime = ContractRuntime::from_file(ast);
 
     if runtime.machines.is_empty() {
-        println!("  ℹ️ 상태머신 계약이 없습니다");
+        println!("  ℹ️ No state machine contracts found");
         std::process::exit(0);
     }
 
@@ -168,29 +166,15 @@ fn cmd_query(ast: &n2_compiler::ast::N2File, extra: Option<String>) {
     match registry.execute_query(&sql) {
         Ok(result) => print!("{}", result),
         Err(e) => {
-            eprintln!("❌ 쿼리 에러: {}", e);
+            eprintln!("❌ Query error: {}", e);
             std::process::exit(1);
         }
     }
 }
 
-fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, target_arg: Option<String>) {
-    let target = target_arg
-        .as_deref()
-        .and_then(|s| s.strip_prefix("--target=").or_else(|| s.strip_prefix("--target ")))
-        .or_else(|| target_arg.as_deref())
-        .unwrap_or("all");
-
-    // Handle --target flag passed as separate arg
-    let target = if target == "--target" {
-        // target value would be in the next position, but we don't have it
-        // Default to all
-        "all"
-    } else if target.starts_with("--target") {
-        target.trim_start_matches("--target").trim_start_matches('=').trim()
-    } else {
-        target
-    };
+fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, remaining_args: &[String]) {
+    // Parse --target from remaining args
+    let target = parse_target_arg(remaining_args);
 
     let registry = BackendRegistry::new();
     let (source_name, source_version) = extract_meta(ast);
@@ -208,7 +192,7 @@ fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, target_arg: Optio
     let base_path = Path::new(filepath).with_extension("");
 
     if target == "all" {
-        println!("🎯 전체 타겟 일괄 컴파일");
+        println!("🎯 Compiling to all targets");
         println!();
 
         let results = registry.compile_all(ast, &base_meta);
@@ -220,33 +204,33 @@ fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, target_arg: Optio
             match result {
                 Ok(code) => {
                     fs::write(&out_path, code).unwrap_or_else(|e| {
-                        eprintln!("  ❌ {} 파일 쓰기 실패: {}", out_path, e);
+                        eprintln!("  ❌ {} write failed: {}", out_path, e);
                     });
                     println!("  ✅ {} → {} ({} bytes)", target_name, out_path, code.len());
                     success_count += 1;
                 }
                 Err(e) => {
-                    eprintln!("  ❌ {} 실패: {}", target_name, e);
+                    eprintln!("  ❌ {} failed: {}", target_name, e);
                     fail_count += 1;
                 }
             }
         }
 
         println!();
-        println!("📊 결과: {} 성공, {} 실패 / {} 타겟",
+        println!("📊 Result: {} success, {} failed / {} targets",
             success_count, fail_count, results.len());
     } else {
         let mut meta = base_meta;
         meta.target = target.to_string();
 
-        match registry.compile(ast, target, &meta) {
+        match registry.compile(ast, &target, &meta) {
             Ok(code) => {
-                let ext = registry.get(target)
+                let ext = registry.get(&target)
                     .map(|b| b.file_extension())
                     .unwrap_or(".n2out");
                 let out_path = format!("{}{}", base_path.display(), ext);
                 fs::write(&out_path, &code).unwrap_or_else(|e| {
-                    eprintln!("❌ 파일 쓰기 실패: {}", e);
+                    eprintln!("❌ Write failed: {}", e);
                     std::process::exit(1);
                 });
                 println!("✅ {} → {} ({} bytes)", target, out_path, code.len());
@@ -259,17 +243,40 @@ fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, target_arg: Optio
     }
 }
 
+/// Parse --target argument from remaining CLI args
+/// Supports: "--target=rust", "--target rust", bare "rust"
+fn parse_target_arg(args: &[String]) -> String {
+    if args.is_empty() {
+        return "all".to_string();
+    }
+
+    let first = &args[0];
+
+    // --target=rust (joined form)
+    if let Some(val) = first.strip_prefix("--target=") {
+        return val.to_string();
+    }
+
+    // --target rust (split form)
+    if first == "--target" {
+        return args.get(1).cloned().unwrap_or_else(|| "all".to_string());
+    }
+
+    // Bare target name: "rust", "all", etc.
+    first.to_string()
+}
+
 fn cmd_backends() {
     println!("🔧 n2c v{} — Clotho multi-target compiler", VERSION);
     println!();
-    println!("지원 백엔드:");
+    println!("Supported backends:");
     println!();
     let registry = BackendRegistry::new();
     for (name, ext) in registry.list() {
         println!("  {:12} → {}", name, ext);
     }
     println!();
-    println!("총 {} 타겟 지원", registry.list().len());
+    println!("Total: {} targets supported", registry.list().len());
 }
 
 fn print_summary(ast: &n2_compiler::ast::N2File) {
@@ -287,14 +294,42 @@ fn print_summary(ast: &n2_compiler::ast::N2File) {
             Block::Semantic(_) => counts[7] += 1,
         }
     }
-    println!("📊 블록: @meta:{} @import:{} @schema:{} @contract:{} @rule:{} @workflow:{} @query:{} @semantic:{} | 총 {}",
+    println!("📊 Blocks: @meta:{} @import:{} @schema:{} @contract:{} @rule:{} @workflow:{} @query:{} @semantic:{} | total {}",
         counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6], counts[7],
         ast.blocks.len()
     );
 }
 
-/// Simple timestamp without chrono dependency
+/// ISO 8601 timestamp using std::time (no external dependency)
 fn chrono_now() -> String {
-    // Use a basic approach to avoid adding chrono dependency
-    format!("compiled-by-n2c-v{}", VERSION)
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    let days = secs / 86400;
+    let remaining = secs % 86400;
+    let hours = remaining / 3600;
+    let mins = (remaining % 3600) / 60;
+    let s = remaining % 60;
+    let mut y = 1970i64;
+    let mut d = days as i64;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if d < days_in_year { break; }
+        d -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days = [
+        31, if leap { 29 } else { 28 }, 31, 30, 31, 30,
+        31, 31, 30, 31, 30, 31
+    ];
+    let mut m = 0;
+    for md in &month_days {
+        if d < *md { break; }
+        d -= md;
+        m += 1;
+    }
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m + 1, d + 1, hours, mins, s)
 }

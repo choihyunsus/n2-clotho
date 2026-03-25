@@ -1,6 +1,6 @@
 // C codegen backend — AST to .n2c compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
 
 pub struct CBackend;
 
@@ -19,10 +19,12 @@ impl CodeGenerator for CBackend {
                 Block::Contract(ct) => emit_contract(&mut out, ct),
                 Block::Rule(r) => emit_rule(&mut out, r),
                 Block::Workflow(w) => emit_workflow(&mut out, w),
+                // Schema codegen is only supported for Rust target
                 _ => {}
             }
         }
 
+        out.push_str("\n#endif /* N2_CONTRACT_H */\n");
         Ok(out)
     }
 }
@@ -116,7 +118,7 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
         rule.name, name_lower
     ));
     for p in &rule.blacklist {
-        let clean = p.trim_matches('/').trim_end_matches('i');
+            let clean = clean_pattern(p);
         out.push_str(&format!(
             "    if (strstr(input, \"{}\") != NULL) return N2_ERR_BLACKLISTED;\n",
             clean
@@ -140,13 +142,4 @@ fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
         "static const int {}_step_count = {};\n\n",
         name_lower, wf.steps.len()
     ));
-}
-
-fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
-    let mut seen = Vec::new();
-    for t in transitions {
-        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
-        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
-    }
-    seen
 }

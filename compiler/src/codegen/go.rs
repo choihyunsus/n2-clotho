@@ -1,6 +1,6 @@
 // Go codegen backend — AST to .n2go compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
 
 pub struct GoBackend;
 
@@ -11,14 +11,23 @@ impl CodeGenerator for GoBackend {
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
         let mut out = String::with_capacity(4096);
 
+        // Scan AST to determine which imports are needed
+        let has_contract = ast.blocks.iter().any(|b| {
+            matches!(b, Block::Contract(c) if !c.transitions.is_empty())
+        });
+        let has_rule_blacklist = ast.blocks.iter().any(|b| {
+            matches!(b, Block::Rule(r) if !r.blacklist.is_empty())
+        });
+
         emit_header(&mut out, meta);
-        emit_prelude(&mut out);
+        emit_prelude(&mut out, has_contract, has_rule_blacklist);
 
         for block in &ast.blocks {
             match block {
                 Block::Contract(ct) => emit_contract(&mut out, ct),
                 Block::Rule(r) => emit_rule(&mut out, r),
                 Block::Workflow(w) => emit_workflow(&mut out, w),
+                // Schema codegen is only supported for Rust target
                 _ => {}
             }
         }
@@ -39,23 +48,34 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
     ));
 }
 
-fn emit_prelude(out: &mut String) {
-    out.push_str(
-        "package n2contract\n\n\
-         import (\n\
-         \t\"fmt\"\n\
-         \t\"strings\"\n\
-         )\n\n\
-         // ContractViolation represents an invalid state transition\n\
-         type ContractViolation struct {\n\
-         \tContract  string\n\
-         \tFromState string\n\
-         \tEvent     string\n\
-         }\n\n\
-         func (e *ContractViolation) Error() string {\n\
-         \treturn fmt.Sprintf(\"[%s] invalid transition from %s on '%s'\", e.Contract, e.FromState, e.Event)\n\
-         }\n\n"
-    );
+fn emit_prelude(out: &mut String, needs_fmt: bool, needs_strings: bool) {
+    out.push_str("package n2contract\n\n");
+
+    // Only emit imports that are actually used to satisfy Go compiler
+    if needs_fmt || needs_strings {
+        out.push_str("import (\n");
+        if needs_fmt {
+            out.push_str("\t\"fmt\"\n");
+        }
+        if needs_strings {
+            out.push_str("\t\"strings\"\n");
+        }
+        out.push_str(")\n\n");
+    }
+
+    if needs_fmt {
+        out.push_str(
+            "// ContractViolation represents an invalid state transition\n\
+             type ContractViolation struct {\n\
+             \tContract  string\n\
+             \tFromState string\n\
+             \tEvent     string\n\
+             }\n\n\
+             func (e *ContractViolation) Error() string {\n\
+             \treturn fmt.Sprintf(\"[%s] invalid transition from %s on '%s'\", e.Contract, e.FromState, e.Event)\n\
+             }\n\n"
+        );
+    }
 }
 
 fn emit_contract(out: &mut String, ct: &ContractBlock) {
@@ -127,7 +147,7 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
         rule.name
     ));
     for p in &rule.blacklist {
-        let clean = p.trim_matches('/').trim_end_matches('i');
+        let clean = clean_pattern(p);
         out.push_str(&format!("\t\t\"{}\",\n", clean));
     }
     out.push_str(
@@ -149,13 +169,4 @@ fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
         out.push_str(&format!("\t\"{}\",\n", step.name));
     }
     out.push_str("}\n\n");
-}
-
-fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
-    let mut seen = Vec::new();
-    for t in transitions {
-        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
-        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
-    }
-    seen
 }

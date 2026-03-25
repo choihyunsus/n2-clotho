@@ -1,6 +1,6 @@
 // Rust codegen backend — AST to .n2rs compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
 
 pub struct RustBackend;
 
@@ -133,7 +133,7 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
         out.push_str("    pub fn check_blacklist(input: &str) -> Option<&'static str> {\n");
         out.push_str("        let patterns: &[&str] = &[\n");
         for p in &rule.blacklist {
-            let clean = p.trim_matches('/').trim_end_matches('i');
+            let clean = clean_pattern(p);
             out.push_str(&format!("            \"{}\",\n", clean));
         }
         out.push_str("        ];\n");
@@ -171,13 +171,4 @@ fn emit_schema(out: &mut String, schema: &SchemaBlock) {
             out.push_str("}\n\n");
         }
     }
-}
-
-fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
-    let mut seen = Vec::new();
-    for t in transitions {
-        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
-        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
-    }
-    seen
 }

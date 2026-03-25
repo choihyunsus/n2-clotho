@@ -1,7 +1,7 @@
 # n2-compiler — .n2 language compiler for AI agents (Rust + WASM)
 [package]
 name = "n2-compiler"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 description = "Compiled instruction language for AI agents — Rust + WASM compiler for .n2 rules"
 

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "start:sse": "CLOTHO_TRANSPORT=sse node server.js",
-    "build:compiler": "cd compiler && cargo build --release",
+    "build:compiler": "cd ../compiler ; cargo build --release",
     "test": "node --test tests/"
   },
   "keywords": [

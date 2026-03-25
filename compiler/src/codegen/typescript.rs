@@ -1,6 +1,6 @@
 // TypeScript codegen backend — AST to .n2ts compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
 
 pub struct TypeScriptBackend;
 
@@ -19,6 +19,7 @@ impl CodeGenerator for TypeScriptBackend {
                 Block::Contract(ct) => emit_contract(&mut out, ct),
                 Block::Rule(r) => emit_rule(&mut out, r),
                 Block::Workflow(w) => emit_workflow(&mut out, w),
+                // Schema codegen is only supported for Rust target
                 _ => {}
             }
         }
@@ -110,7 +111,7 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
     out.push_str(&format!("export class {}Rule {{\n", rule.name));
     out.push_str("  private static readonly BLACKLIST: string[] = [\n");
     for p in &rule.blacklist {
-        let clean = p.trim_matches('/').trim_end_matches('i');
+        let clean = clean_pattern(p);
         out.push_str(&format!("    '{}',\n", clean));
     }
     out.push_str("  ];\n\n");
@@ -126,22 +127,15 @@ fn emit_rule(out: &mut String, rule: &RuleBlock) {
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
+    if wf.name.is_empty() { return; }
     out.push_str(&format!("/** Workflow: {} */\n", wf.name));
+    let camel = wf.name.chars().next().unwrap().to_lowercase().collect::<String>() + &wf.name[1..];
     out.push_str(&format!(
         "export const {}Steps: readonly string[] = [\n",
-        wf.name.chars().next().unwrap().to_lowercase().collect::<String>() + &wf.name[1..]
+        camel
     ));
     for step in &wf.steps {
         out.push_str(&format!("  '{}',\n", step.name));
     }
     out.push_str("] as const;\n\n");
-}
-
-fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
-    let mut seen = Vec::new();
-    for t in transitions {
-        if !seen.contains(&t.from) { seen.push(t.from.clone()); }
-        if !seen.contains(&t.to) { seen.push(t.to.clone()); }
-    }
-    seen
 }

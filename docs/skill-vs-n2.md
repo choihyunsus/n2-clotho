@@ -1,4 +1,4 @@
-# 📏 `.md` Skills vs `.n2` Contracts
+# `.md` Skills vs `.n2` Contracts
 
 > **Why replace markdown-based skills with compiled `.n2` contracts?**
 
@@ -11,11 +11,11 @@ This document compares the traditional markdown skill approach with Clotho's com
 ## The Core Problem
 
 ```
-📝 .md Skill:  "Please follow these 9 coding pillars"
-   → AI: "Got it!" → uses `any` 47 times, skips verification, deploys untested code
+ .md Skill: "Please follow these 9 coding pillars"
+ → AI: "Got it!" → uses `any` 47 times, skips verification, deploys untested code
 
-📜 .n2 Contract:  @rule TypeSafety { checks: [no_any_type] }
-   → AI attempts `any` → ❌ BLOCKED before it reaches your codebase
+ .n2 Contract: @rule TypeSafety { checks: [no_any_type] }
+ → AI attempts `any` → BLOCKED before it reaches your codebase
 ```
 
 **Markdown is a suggestion. `.n2` is compiled law.**
@@ -43,28 +43,28 @@ This document compares the traditional markdown skill approach with Clotho's com
 
 ```n2
 @contract CodingLifecycle {
-  scope: session
-  states: CodingState
+ scope: session
+ states: CodingState
 
-  transitions {
-    COLD -> BOOTED : on n2_boot
-    BOOTED -> SKILLED : on n2_coding
-    SKILLED -> WORKING : on n2_work_start
-    WORKING -> VERIFYING : on n2_coding_verify
-    VERIFYING -> DONE : on n2_work_end
-  }
+ transitions {
+ COLD -> BOOTED : on n2_boot
+ BOOTED -> SKILLED : on n2_coding
+ SKILLED -> WORKING : on n2_work_start
+ WORKING -> VERIFYING : on n2_coding_verify
+ VERIFYING -> DONE : on n2_work_end
+ }
 
-  invariant {
-    on n2_work_start requires state == SKILLED
-    => "n2_coding must be loaded before starting work"
+ invariant {
+ on n2_work_start requires state == SKILLED
+ => "n2_coding must be loaded before starting work"
 
-    on n2_work_end requires state == VERIFYING
-    => "Cannot end work without running n2_coding_verify"
-  }
+ on n2_work_end requires state == VERIFYING
+ => "Cannot end work without running n2_coding_verify"
+ }
 }
 ```
 
-> AI tries to skip `n2_coding` → **❌ BLOCKED**. State machine won't transition.
+> AI tries to skip `n2_coding` → ** BLOCKED**. State machine won't transition.
 
 ---
 
@@ -86,39 +86,39 @@ This document compares the traditional markdown skill approach with Clotho's com
 
 ```n2
 @rule TypeSafety {
-  description: "Zero tolerance for type violations"
-  scope: code
-  enforce: strict
+ description: "Zero tolerance for type violations"
+ scope: code
+ enforce: strict
 
-  checks: [
-    no_any_type,
-    no_ts_ignore,
-    no_ts_expect_error,
-    explicit_return_types
-  ]
+ checks: [
+ no_any_type,
+ no_ts_ignore,
+ no_ts_expect_error,
+ explicit_return_types
+ ]
 }
 
 @rule Complexity {
-  description: "Keep code simple and readable"
-  scope: code
-  enforce: strict
+ description: "Keep code simple and readable"
+ scope: code
+ enforce: strict
 
-  checks: [
-    max_file_lines: 500,
-    max_function_lines: 50,
-    cyclomatic_complexity: 10
-  ]
+ checks: [
+ max_file_lines: 500,
+ max_function_lines: 50,
+ cyclomatic_complexity: 10
+ ]
 }
 
 @rule NamingConventions {
-  scope: code
-  enforce: strict
+ scope: code
+ enforce: strict
 
-  checks: [
-    components: /^[A-Z][a-zA-Z]+$/,
-    variables: /^[a-z][a-zA-Z0-9]*$/,
-    constants: /^[A-Z_]+$/
-  ]
+ checks: [
+ components: /^[A-Z][a-zA-Z]+$/,
+ variables: /^[a-z][a-zA-Z0-9]*$/,
+ constants: /^[A-Z_]+$/
+ ]
 }
 ```
 
@@ -148,38 +148,38 @@ This document compares the traditional markdown skill approach with Clotho's com
 
 ```n2
 @workflow PostCodingVerify {
-  description: "Automated post-coding verification"
-  trigger: on_event(n2_coding_verify)
-  enforce: strict
+ description: "Automated post-coding verification"
+ trigger: on_event(n2_coding_verify)
+ enforce: strict
 
-  step check_temp_files {
-    action: scan_for(patterns: [/\.tmp$/, /\.bak$/, /scratch/])
-    expect { none_found => continue }
-  }
+ step check_temp_files {
+ action: scan_for(patterns: [/\.tmp$/, /\.bak$/, /scratch/])
+ expect { none_found => continue }
+ }
 
-  step check_unused_imports {
-    action: lint_check(rule: "no-unused-imports")
-    expect { pass => continue }
-  }
+ step check_unused_imports {
+ action: lint_check(rule: "no-unused-imports")
+ expect { pass => continue }
+ }
 
-  step check_console_log {
-    action: scan_for(patterns: [/console\.log/])
-    expect { none_found => continue }
-  }
+ step check_console_log {
+ action: scan_for(patterns: [/console\.log/])
+ expect { none_found => continue }
+ }
 
-  step type_check {
-    action: run_command("tsc --noEmit")
-    expect {
-      exit_code == 0 => continue
-      fail => abort with "TypeScript errors must be fixed before completion"
-    }
-  }
+ step type_check {
+ action: run_command("tsc --noEmit")
+ expect {
+ exit_code == 0 => continue
+ fail => abort with "TypeScript errors must be fixed before completion"
+ }
+ }
 
-  step senior_review {
-    depends_on: [check_temp_files, check_unused_imports, check_console_log, type_check]
-    action: self_review(question: "Would you be proud to deploy this today?")
-    required: true
-  }
+ step senior_review {
+ depends_on: [check_temp_files, check_unused_imports, check_console_log, type_check]
+ action: self_review(question: "Would you be proud to deploy this today?")
+ required: true
+ }
 }
 ```
 
@@ -204,11 +204,11 @@ This document compares the traditional markdown skill approach with Clotho's com
 
 ```n2
 @schema CodingConfig {
-  max_file_lines: int [default: 500]
-  max_function_lines: int [default: 50]
-  max_complexity: int [default: 10]
-  strict_mode: bool [default: true]
-  allowed_languages: string[] [default: ["typescript", "python", "rust"]]
+ max_file_lines: int [default: 500]
+ max_function_lines: int [default: 50]
+ max_complexity: int [default: 10]
+ strict_mode: bool [default: true]
+ allowed_languages: string[] [default: ["typescript", "python", "rust"]]
 }
 ```
 
@@ -219,10 +219,10 @@ This document compares the traditional markdown skill approach with Clotho's com
 
 # Override for this specific project
 @meta {
-  config: CodingConfig {
-    max_file_lines: 300    # Stricter for this project
-    allowed_languages: ["typescript"]
-  }
+ config: CodingConfig {
+ max_file_lines: 300 # Stricter for this project
+ allowed_languages: ["typescript"]
+ }
 }
 ```
 
@@ -233,9 +233,9 @@ This document compares the traditional markdown skill approach with Clotho's com
 #### `.md` Skill
 
 ```
-How to find which rules apply?  → Ctrl+F through the document
+How to find which rules apply? → Ctrl+F through the document
 How to check if rules conflict? → Read everything manually
-How to audit what's enforced?   → You can't
+How to audit what's enforced? → You can't
 ```
 
 #### `.n2` Contract
@@ -245,20 +245,20 @@ How to audit what's enforced?   → You can't
 $ n2c query coding.n2 "SELECT name, scope FROM rules WHERE enforce = 'strict'"
 
 ┌──────────────────────┬───────┬─────────┐
-│ name                 │ scope │ enforce │
+│ name │ scope │ enforce │
 ├──────────────────────┼───────┼─────────┤
-│ TypeSafety           │ code  │ strict  │
-│ Complexity           │ code  │ strict  │
-│ NamingConventions    │ code  │ strict  │
-│ Security             │ code  │ strict  │
+│ TypeSafety │ code │ strict │
+│ Complexity │ code │ strict │
+│ NamingConventions │ code │ strict │
+│ Security │ code │ strict │
 └──────────────────────┴───────┴─────────┘
 
 # Validate all contracts for integrity
 $ n2c validate coding.n2
 
-✅ State machine: CodingLifecycle — 5 transitions, integrity verified
-✅ All rules: 4 rules, 0 errors, 0 warnings
-✅ Workflow: PostCodingVerify — 5 steps, dependency chain valid
+ State machine: CodingLifecycle — 5 transitions, integrity verified
+ All rules: 4 rules, 0 errors, 0 warnings
+ Workflow: PostCodingVerify — 5 steps, dependency chain valid
 ```
 
 ---
@@ -269,7 +269,7 @@ $ n2c validate coding.n2
 |--------|------------|----------------|
 | **Format** | Free-form prose | Structured blocks |
 | **Parsing** | AI "reads" it | PEG grammar → AST |
-| **Enforcement** | 🙏 Hope | ❌ Compiler-blocked |
+| **Enforcement** | Hope | Compiler-blocked |
 | **Workflow order** | Numbered list | State machine transitions |
 | **Configuration** | Hardcoded in text | Schema with types + defaults |
 | **Querying** | Ctrl+F | SQL queries |
@@ -284,14 +284,14 @@ $ n2c validate coding.n2
 
 In our own N2 ecosystem, switching from `.md` skills to `.n2` contracts eliminated:
 
-- ❌ AI skipping boot sequence → **state machine blocks it**
-- ❌ AI using `as any` → **TypeSafety rule blocks it**
-- ❌ AI ending work without verification → **CodingLifecycle invariant blocks it**
-- ❌ AI running destructive commands → **Ark security gate blocks it**
-- ❌ Multiple agents editing same file → **ownership contract blocks it**
+- AI skipping boot sequence → **state machine blocks it**
+- AI using `as any` → **TypeSafety rule blocks it**
+- AI ending work without verification → **CodingLifecycle invariant blocks it**
+- AI running destructive commands → **Ark security gate blocks it**
+- Multiple agents editing same file → **ownership contract blocks it**
 
 > *"The difference between `.md` and `.n2` is the difference between asking nicely and having a compiler."*
 
 ---
 
-📦 [Get Clotho](https://www.npmjs.com/package/n2-clotho) · 📖 [Back to README](../README.md) · 🛡️ [Ark Security Layer](https://github.com/choihyunsus/n2-ark)
+ [Get Clotho](https://www.npmjs.com/package/n2-clotho) · [Back to README](../README.md) · [Ark Security Layer](https://github.com/choihyunsus/n2-ark)

@@ -8,7 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [3.1.0] — 2026-03-26
 
-### 🔄 Repositioning: From Security Tool to Universal Rule Compiler
+### Repositioning: From Security Tool to Universal Rule Compiler
 
 The README and project identity have been completely rewritten to reflect Clotho's true purpose — a **general-purpose compiled instruction language** for AI agents, not just a security tool.
 
@@ -30,7 +30,7 @@ The README and project identity have been completely rewritten to reflect Clotho
 
 ## [3.0.0] — 2026-03-25
 
-### 🎯 Multi-Target Compilation Engine
+### Multi-Target Compilation Engine
 
 Major release introducing compiled output for **6 target languages**.
 

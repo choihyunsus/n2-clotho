@@ -1,6 +1,6 @@
 # n2-Clotho MCP Server
 
-Clotho 멀티 타겟 컴파일러의 MCP 서버.  
+Clotho 멀티 타겟 컴파일러의 MCP 서버. 
 AI 에이전트가 `.n2` 계약을 직접 컴파일/검증할 수 있도록 합니다.
 
 ## 도구

@@ -1,6 +1,6 @@
 {
   "name": "n2-clotho",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "description": "Compiled instruction language for AI agents — Define, compile, and enforce rules that markdown can't",
   "main": "server.js",
   "type": "commonjs",
@@ -30,7 +30,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.6.1",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "zod": "^3.23.0"
   }
 }

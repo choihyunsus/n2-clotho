@@ -9,7 +9,7 @@ A `.n2` parser, validator, state-machine simulator, registry query engine and mu
 Requires Node.js 20.19 or later for the bundled WASM runtime.
 
 ```sh
-npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.0.0/n2-clotho-4.0.0.tgz
+npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.0.1/n2-clotho-4.0.1.tgz
 ```
 
 Configure an MCP client to run `node` with the installed `node_modules/n2-clotho/server.js` absolute path. The default transport is stdio.
@@ -81,9 +81,9 @@ Native builds require Rust 1.98 or later.
 ```sh
 git clone https://github.com/choihyunsus/n2-clotho.git
 cd n2-clotho
-git checkout v4.0.0
+git checkout v4.0.1
 cargo test --locked --manifest-path compiler/Cargo.toml
-cargo build --locked --manifest-path compiler/Cargo.toml
+cargo build --locked --manifest-path compiler/Cargo.toml --bin n2-compiler
 cd mcp
 npm ci
 npm test
@@ -91,10 +91,10 @@ npm test
 
 The CLI executable is `compiler/target/debug/n2-compiler` with `.exe` on Windows. Commands include `parse`, `validate`, `simulate`, `query`, `compile` and `backends`.
 
-To rebuild the bundled WASM, run from `compiler` with a Rust 1.98+ toolchain and wasm-pack installed.
+To rebuild the bundled WASM, run from the repository root with a Rust 1.98+ toolchain and wasm-pack installed. The script remaps local source and Cargo paths in the output.
 
 ```sh
-wasm-pack build --target nodejs --out-dir ../mcp/wasm --no-pack --no-opt --features wasm
+node scripts/build-wasm.cjs
 ```
 
 Release checks cover 50 Rust tests, 13 Node tests including actual stdio/SSE transports, native fallback, and 22 language execution probe checks across all six targets. These checks cover the tested fixtures and declared subset.

@@ -7,7 +7,7 @@
 Node.js 20.19 이상이 필요합니다.
 
 ```sh
-npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.0.0/n2-clotho-4.0.0.tgz
+npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.0.1/n2-clotho-4.0.1.tgz
 ```
 
 MCP 클라이언트에서 `node`와 설치된 `node_modules/n2-clotho/server.js`의 절대 경로를 지정합니다. 기본 통신은 stdio입니다.

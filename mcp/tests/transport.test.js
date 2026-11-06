@@ -15,6 +15,16 @@ const source = '@meta { name: "Probe" enforce: strict } @rule Safe { blacklist: 
 async function checkTools(client) {
     const list = await client.listTools();
     assert.equal(list.tools.length, 5);
+    const schema = list.tools.find(tool => tool.name === 'clotho_compile').inputSchema;
+    assert.equal(schema.properties.source.type, 'string');
+    assert.deepEqual(schema.properties.target.enum, ['rust', 'c', 'cpp', 'go', 'python', 'ts']);
+    assert.deepEqual(schema.required, ['source', 'target']);
+    const malformed = await client.callTool({ name: 'clotho_compile', arguments: { source: [], target: 'python' } });
+    assert.equal(malformed.isError, true);
+    const missingSource = await client.callTool({ name: 'clotho_compile', arguments: { target: 'python' } });
+    assert.equal(missingSource.isError, true);
+    const badTarget = await client.callTool({ name: 'clotho_compile', arguments: { source, target: 'shell' } });
+    assert.equal(badTarget.isError, true);
     const compiled = await client.callTool({ name: 'clotho_compile', arguments: { source, target: 'python' } });
     assert.ok(!compiled.isError);
     assert.match(JSON.parse(compiled.content[0].text).code, /class SafeRule/);

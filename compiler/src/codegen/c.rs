@@ -1,6 +1,6 @@
 // C codegen backend — AST to .n2c compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct CBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for CBackend {
     fn file_extension(&self) -> &str { ".n2c" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         emit_header(&mut out, meta);
@@ -37,8 +38,8 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          \x20* Compiler: {}\n\
          \x20* Compiled: {}\n\
          \x20*/\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
@@ -60,13 +61,7 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     let name_lower = ct.name.to_lowercase();
     let states = collect_states(&ct.transitions);
 
-    // Emit enum
-    out.push_str(&format!("/* State machine: {} */\n", ct.name));
-    out.push_str(&format!("typedef enum {{\n"));
-    for (i, s) in states.iter().enumerate() {
-        out.push_str(&format!("    {}_{} = {},\n", name_lower.to_uppercase(), s, i));
-    }
-    out.push_str(&format!("}} {}_state_t;\n\n", name_lower));
+    emit_state_enum(out, ct, &name_lower, &states);
 
     // Emit transition function
     out.push_str(&format!(
@@ -108,21 +103,22 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     );
 }
 
+fn emit_state_enum(out: &mut String, ct: &ContractBlock, name_lower: &str, states: &[String]) {
+    // Emit enum
+    out.push_str(&format!("/* State machine: {} */\n", ct.name));
+    out.push_str("typedef enum {\n");
+    for (i, s) in states.iter().enumerate() {
+        out.push_str(&format!("    {}_{} = {},\n", name_lower.to_uppercase(), s, i));
+    }
+    out.push_str(&format!("}} {}_state_t;\n\n", name_lower));
+
+}
+
 fn emit_rule(out: &mut String, rule: &RuleBlock) {
     if rule.blacklist.is_empty() { return; }
-
-    let name_lower = rule.name.to_lowercase();
-    out.push_str(&format!(
-        "/* Rule: {} */\n\
-         static int {}_check_blacklist(const char *input) {{\n",
-        rule.name, name_lower
-    ));
+    out.push_str(&format!("static int {}_check_blacklist(const char *input) {{\n", rule.name.to_lowercase()));
     for p in &rule.blacklist {
-            let clean = clean_pattern(p);
-        out.push_str(&format!(
-            "    if (strstr(input, \"{}\") != NULL) return N2_ERR_BLACKLISTED;\n",
-            clean
-        ));
+        out.push_str(&format!("    if (strstr(input, {}) != NULL) return N2_ERR_BLACKLISTED;\n", super::patterns::literal(super::patterns::parts(p).0)));
     }
     out.push_str("    return N2_OK;\n}\n\n");
 }

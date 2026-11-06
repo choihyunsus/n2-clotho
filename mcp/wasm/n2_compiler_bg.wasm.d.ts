@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const compile_n2_wasm: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
 export const extract_blacklist_wasm: (a: number, b: number) => [number, number, number, number];
 export const n2c_version: () => [number, number];
 export const parse_n2_wasm: (a: number, b: number) => [number, number, number, number];

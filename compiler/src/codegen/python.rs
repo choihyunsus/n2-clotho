@@ -1,6 +1,6 @@
 // Python codegen backend — AST to .n2py compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct PythonBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for PythonBackend {
     fn file_extension(&self) -> &str { ".n2py" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         emit_header(&mut out, meta);
@@ -35,8 +36,8 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          # Version: {}\n\
          # Compiler: {}\n\
          # Compiled: {}\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
@@ -108,27 +109,11 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
 
 fn emit_rule(out: &mut String, rule: &RuleBlock) {
     if rule.blacklist.is_empty() { return; }
-
-    let name = &rule.name;
-    out.push_str(&format!(
-        "class {}Rule:\n\
-         \x20   \"\"\"Rule: {}.\"\"\"\n\n\
-         \x20   BLACKLIST = [\n",
-        name, name
-    ));
+    out.push_str(&format!("import re\nclass {}Rule:\n    @classmethod\n    def check_blacklist(cls, input_text: str) -> Tuple[Optional[str], bool]:\n", rule.name));
     for p in &rule.blacklist {
-        let clean = clean_pattern(p);
-        out.push_str(&format!("        \"{}\",\n", clean));
+        out.push_str(&format!("        if re.search({}, input_text):\n            return {}, True\n", super::patterns::literal(&super::patterns::expression(p)), super::patterns::literal(p)));
     }
-    out.push_str(
-        "    ]\n\n\
-         \x20   @classmethod\n\
-         \x20   def check_blacklist(cls, input_text: str) -> Tuple[Optional[str], bool]:\n\
-         \x20       for pattern in cls.BLACKLIST:\n\
-         \x20           if pattern in input_text:\n\
-         \x20               return pattern, True\n\
-         \x20       return None, False\n\n\n"
-    );
+    out.push_str("        return None, False\n\n");
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {

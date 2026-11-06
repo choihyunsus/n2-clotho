@@ -1,6 +1,6 @@
 // C++ codegen backend — AST to .n2c2 compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct CppBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for CppBackend {
     fn file_extension(&self) -> &str { ".n2c2" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         emit_header(&mut out, meta);
@@ -36,15 +37,15 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          // Version: {}\n\
          // Compiler: {}\n\
          // Compiled: {}\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
 fn emit_prelude(out: &mut String) {
     out.push_str(
         "#pragma once\n\
-         #include <string>\n\
+         #include <regex>\n#include <string>\n\
          #include <stdexcept>\n\
          #include <vector>\n\n\
          namespace n2 {\n\n\
@@ -62,32 +63,7 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     let name = &ct.name;
     let states = collect_states(&ct.transitions);
 
-    // Emit enum class
-    out.push_str(&format!("/// State machine: {}\n", name));
-    out.push_str(&format!("enum class {}State {{\n", name));
-    for s in &states {
-        out.push_str(&format!("    {},\n", s));
-    }
-    out.push_str("};\n\n");
-
-    // Emit class
-    out.push_str(&format!(
-        "class {} {{\n\
-         \x20   {}State state_ = {}State::{};\n\
-         public:\n",
-        name, name, name, states[0]
-    ));
-
-    // current_state()
-    out.push_str("    const char* currentState() const {\n");
-    out.push_str("        switch (state_) {\n");
-    for s in &states {
-        out.push_str(&format!(
-            "            case {}State::{}: return \"{}\";\n",
-            name, s, s
-        ));
-    }
-    out.push_str("        }\n        return \"UNKNOWN\";\n    }\n\n");
+    emit_contract_start(out, name, &states);
 
     // transition()
     out.push_str(&format!(
@@ -119,31 +95,53 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
 
     out.push_str("            default: break;\n");
     out.push_str("        }\n");
-    out.push_str(&format!(
-        "        throw ContractViolation(\"invalid transition from \" + \
+    out.push_str("        throw ContractViolation(\"invalid transition from \" + \
          std::string(currentState()) + \" on '\" + event + \"'\");\n\
-         \x20   }}\n"
-    ));
+         \x20   }\n");
     out.push_str("};\n\n");
+}
+
+fn emit_contract_start(out: &mut String, name: &str, states: &[String]) {
+    // Emit enum class
+    out.push_str(&format!("/// State machine: {}\n", name));
+    out.push_str(&format!("enum class {}State {{\n", name));
+    for s in states {
+        out.push_str(&format!("    {},\n", s));
+    }
+    out.push_str("};\n\n");
+
+    // Emit class
+    out.push_str(&format!(
+        "class {} {{\n\
+         \x20   {}State state_ = {}State::{};\n\
+         public:\n",
+        name, name, name, states[0]
+    ));
+
+    // current_state()
+    out.push_str("    const char* currentState() const {\n");
+    out.push_str("        switch (state_) {\n");
+    for s in states {
+        out.push_str(&format!(
+            "            case {}State::{}: return \"{}\";\n",
+            name, s, s
+        ));
+    }
+    out.push_str("        }\n        return \"UNKNOWN\";\n    }\n\n");
+
 }
 
 fn emit_rule(out: &mut String, rule: &RuleBlock) {
     if rule.blacklist.is_empty() { return; }
-
-    out.push_str(&format!("/// Rule: {}\n", rule.name));
-    out.push_str(&format!("class {}Rule {{\npublic:\n", rule.name));
-    out.push_str("    static bool checkBlacklist(const std::string& input) {\n");
-    out.push_str("        static const std::vector<std::string> patterns = {\n");
+    out.push_str(&format!("class {}Rule {{\npublic:\n    static bool checkBlacklist(const std::string& input) {{\n", rule.name));
     for p in &rule.blacklist {
-            let clean = clean_pattern(p);
-        out.push_str(&format!("            \"{}\",\n", clean));
+        let (body, flags) = super::patterns::parts(p);
+        let mut options = "std::regex::ECMAScript".to_string();
+        if flags.contains('i') { options.push_str(" | std::regex::icase"); }
+        if flags.contains('m') { options.push_str(" | std::regex::multiline"); }
+        out.push_str(&format!("        if (std::regex_search(input, std::regex({}, {}))) return true;\n", super::patterns::literal(body), options));
     }
-    out.push_str("        };\n");
-    out.push_str("        for (const auto& p : patterns) {\n");
-    out.push_str("            if (input.find(p) != std::string::npos) return true;\n");
-    out.push_str("        }\n");
-    out.push_str("        return false;\n");
-    out.push_str("    }\n};\n\n");
+    out.push_str("        return false;\n    }\n};\n\n");
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {

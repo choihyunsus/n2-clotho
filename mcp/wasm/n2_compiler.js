@@ -1,6 +1,39 @@
 /* @ts-self-types="./n2_compiler.d.ts" */
 
 /**
+ * Generate the requested language using the same validated backends as the CLI.
+ * @param {string} source
+ * @param {string} target
+ * @param {string} compiled_at
+ * @returns {string}
+ */
+function compile_n2_wasm(source, target, compiled_at) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(target, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(compiled_at, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.compile_n2_wasm(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+exports.compile_n2_wasm = compile_n2_wasm;
+
+/**
  * Extract blacklist patterns from .n2 source — returns JSON array
  * @param {string} source
  * @returns {string}

@@ -13,6 +13,12 @@ pub struct CompilationMeta {
     pub compiled_at: String,
 }
 
+/// Metadata is displayed inside generated comments, never interpreted as source.
+pub(super) fn header_value(value: &str) -> String {
+    value.chars().map(|c| if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') { ' ' } else { c })
+        .collect::<String>().replace("*/", "* /")
+}
+
 /// Code generation error
 #[derive(Debug)]
 pub struct CodegenError {
@@ -41,6 +47,10 @@ pub trait CodeGenerator {
 /// Registry of all available backends
 pub struct BackendRegistry {
     backends: Vec<Box<dyn CodeGenerator>>,
+}
+
+impl Default for BackendRegistry {
+    fn default() -> Self { Self::new() }
 }
 
 impl BackendRegistry {
@@ -124,8 +134,7 @@ pub fn collect_states(transitions: &[TransitionStmt]) -> Vec<String> {
 
 /// Clean a blacklist pattern by stripping regex-style /pattern/flags syntax
 pub fn clean_pattern(p: &str) -> &str {
-    if p.starts_with('/') {
-        let inner = &p[1..];
+    if let Some(inner) = p.strip_prefix('/') {
         if let Some(end) = inner.rfind('/') {
             return &inner[..end];
         }
@@ -133,9 +142,18 @@ pub fn clean_pattern(p: &str) -> &str {
     p
 }
 
+pub mod patterns;
+mod capabilities;
+mod symbols;
 pub mod rust;
 pub mod c;
 pub mod cpp;
 pub mod go;
 pub mod python;
 pub mod typescript;
+
+#[cfg(test)]
+mod function_tests;
+
+#[cfg(test)]
+mod symbol_tests;

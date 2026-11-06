@@ -1,6 +1,6 @@
-// n2-clotho MCP Server — Multi-Target AI Contract Compiler
+// n2-clotho MCP Server - Multi-Target AI Contract Compiler
 // Supports both stdio and SSE transport modes
-// v3.2.0: WASM runtime — no Rust toolchain required
+// WASM runtime with native fallback.
 
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
@@ -30,6 +30,7 @@ if (fs.existsSync(wasmPath)) {
     process.exit(1);
 }
 
+function createServer() {
 const server = new McpServer({
     name: 'n2-clotho',
     version: pkg.version,
@@ -50,25 +51,31 @@ registerBatchTools(server, z, compiler);
 registerValidateTools(server, z, compiler);
 registerBackendTools(server, z, compiler);
 registerInspectTools(server, z, compiler);
+return server;
+}
 
 // ═══════════════════════════════════════════════════════
 // Boot
 // ═══════════════════════════════════════════════════════
 
 async function boot() {
-    const mode = process.env.CLOTHO_TRANSPORT || 'stdio';
+    const mode = process.env.CLOTHO_TRANSPORT || (process.argv.includes('--sse') ? 'sse' : 'stdio');
 
     if (mode === 'sse') {
         const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
         const http = require('http');
-        const port = parseInt(process.env.CLOTHO_PORT || '3200', 10);
+        const port = Number(process.env.CLOTHO_PORT || '3200');
+        if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid CLOTHO_PORT');
 
         let transport = null;
 
         const httpServer = http.createServer(async (req, res) => {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            const host = req.headers.host;
+            const address = httpServer.address();
+            const allowedHosts = [`127.0.0.1:${address.port}`, `localhost:${address.port}`];
+            if (!allowedHosts.includes(host) || (req.headers.origin && req.headers.origin !== `http://${host}`)) {
+                res.writeHead(403); res.end('Local same-origin requests only'); return;
+            }
 
             if (req.method === 'OPTIONS') {
                 res.writeHead(204);
@@ -76,11 +83,15 @@ async function boot() {
                 return;
             }
 
-            const url = new URL(req.url, `http://localhost:${port}`);
+            try {
+            const url = new URL(req.url, `http://${host}`);
 
-            if (url.pathname === '/sse') {
+            if (url.pathname === '/sse' && req.method === 'GET') {
+                if (transport) { res.writeHead(409); res.end('An SSE client is already connected'); return; }
                 transport = new SSEServerTransport('/messages', res);
-                await server.connect(transport);
+                const active = transport;
+                res.on('close', () => { if (transport === active) transport = null; });
+                await createServer().connect(transport);
             } else if (url.pathname === '/messages' && req.method === 'POST') {
                 if (transport) {
                     await transport.handlePostMessage(req, res);
@@ -94,21 +105,25 @@ async function boot() {
                     status: 'ok',
                     name: 'n2-clotho',
                     version: pkg.version,
-                    compiler: COMPILER_BIN,
+                    compiler: compiler.type,
                 }));
             } else {
                 res.writeHead(404);
                 res.end('Not Found');
             }
+            } catch (error) {
+                if (!res.headersSent) res.writeHead(500);
+                res.end('Transport request failed');
+                console.error(`[n2-clotho] Transport error: ${error.message}`);
+            }
         });
 
-        httpServer.listen(port, () => {
-            console.log(`[n2-clotho] SSE server running on port ${port}`);
-            console.log(`[n2-clotho] Health: http://localhost:${port}/health`);
+        httpServer.listen(port, '127.0.0.1', () => {
+            console.log(`[n2-clotho] SSE server running on port ${httpServer.address().port}`);
         });
     } else {
         const transport = new StdioServerTransport();
-        await server.connect(transport);
+        await createServer().connect(transport);
     }
 }
 

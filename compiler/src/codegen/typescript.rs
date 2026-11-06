@@ -1,6 +1,6 @@
 // TypeScript codegen backend — AST to .n2ts compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct TypeScriptBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for TypeScriptBackend {
     fn file_extension(&self) -> &str { ".n2ts" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         emit_header(&mut out, meta);
@@ -35,8 +36,8 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          // Version: {}\n\
          // Compiler: {}\n\
          // Compiled: {}\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
@@ -106,24 +107,13 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
 
 fn emit_rule(out: &mut String, rule: &RuleBlock) {
     if rule.blacklist.is_empty() { return; }
-
-    out.push_str(&format!("/** Rule: {} */\n", rule.name));
-    out.push_str(&format!("export class {}Rule {{\n", rule.name));
-    out.push_str("  private static readonly BLACKLIST: string[] = [\n");
+    out.push_str(&format!("export class {}Rule {{\n  static checkBlacklist(input: string): string | null {{\n", rule.name));
     for p in &rule.blacklist {
-        let clean = clean_pattern(p);
-        out.push_str(&format!("    '{}',\n", clean));
+        let (body, flags) = super::patterns::parts(p);
+        let flags: String = flags.chars().filter(|c| *c != 'g').collect();
+        out.push_str(&format!("    if (new RegExp({}, {}).test(input)) return {};\n", super::patterns::literal(body), super::patterns::literal(&flags), super::patterns::literal(p)));
     }
-    out.push_str("  ];\n\n");
-    out.push_str(
-        "  static checkBlacklist(input: string): string | null {\n\
-         \x20   for (const pattern of this.BLACKLIST) {\n\
-         \x20     if (input.includes(pattern)) return pattern;\n\
-         \x20   }\n\
-         \x20   return null;\n\
-         \x20 }\n\
-         }\n\n"
-    );
+    out.push_str("    return null;\n  }\n}\n\n");
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {

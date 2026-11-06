@@ -1,5 +1,4 @@
 // tools/inspect.js — clotho_inspect: Read compiled contract contents
-const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -13,16 +12,18 @@ function registerInspectTools(server, z, compiler) {
         async ({ file }) => {
             try {
                 if (!fs.existsSync(file)) {
-                    return { content: [{ type: 'text', text: `❌ File not found: ${file}` }] };
+                    return { content: [{ type: 'text', text: `File not found: ${file}` }], isError: true };
                 }
 
-                const content = fs.readFileSync(file, 'utf-8');
                 const ext = path.extname(file);
                 const langMap = {
                     '.n2rs': 'rust', '.n2c': 'c', '.n2c2': 'cpp',
                     '.n2go': 'go', '.n2py': 'python', '.n2ts': 'typescript',
                 };
 
+                if (!Object.hasOwn(langMap, ext)) throw new Error('Unsupported compiled-file extension');
+                if (fs.statSync(file).size > 8 * 1024 * 1024) throw new Error('Compiled file exceeds 8 MiB');
+                const content = fs.readFileSync(file, 'utf-8');
                 const summary = [
                     `🧵 **Clotho Inspect**`,
                     `📄 File: ${path.basename(file)}`,

@@ -1,14 +1,18 @@
-// .n2 파서 — pest PEG 파싱 결과를 N2AST로 변환
+// .n2 parser — converts pest PEG parse results into N2AST
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::ast::*;
+use super::ast::*;
+mod schema;
+mod contract;
+use schema::parse_schema_block;
+use contract::parse_contract_block;
 
 #[derive(Parser)]
-#[grammar = "grammar.pest"]
+#[grammar = "src/grammar.pest"]
 pub struct N2Parser;
 
-/// .n2 소스 코드를 파싱하여 N2File AST를 반환
+/// Parse .n2 source code and return an N2File AST
 pub fn parse_n2(source: &str) -> Result<N2File, String> {
     let pairs = N2Parser::parse(Rule::n2_file, source)
         .map_err(|e| format!("파싱 에러: {}", e))?;
@@ -53,11 +57,12 @@ fn parse_block(pair: pest::iterators::Pair<Rule>) -> Result<Block, String> {
         Rule::workflow_block => parse_workflow_block(pair).map(Block::Workflow),
         Rule::query_block => parse_query_block(pair).map(Block::Query),
         Rule::semantic_block => parse_semantic_block(pair).map(Block::Semantic),
+        Rule::recipe_block => parse_recipe_block(pair).map(Block::Recipe),
         _ => Err(format!("알 수 없는 블록 타입: {:?}", pair.as_rule())),
     }
 }
 
-// ── @meta 파싱 ──
+// ── @meta parsing ──
 fn parse_meta_block(pair: pest::iterators::Pair<Rule>) -> Result<MetaBlock, String> {
     let mut fields = Vec::new();
     for inner in pair.into_inner() {
@@ -68,7 +73,7 @@ fn parse_meta_block(pair: pest::iterators::Pair<Rule>) -> Result<MetaBlock, Stri
     Ok(MetaBlock { fields })
 }
 
-// ── @import 파싱 ──
+// ── @import parsing ──
 fn parse_import_block(pair: pest::iterators::Pair<Rule>) -> Result<ImportBlock, String> {
     let mut imports = Vec::new();
     for inner in pair.into_inner() {
@@ -94,124 +99,7 @@ fn parse_import_block(pair: pest::iterators::Pair<Rule>) -> Result<ImportBlock, 
     Ok(ImportBlock { imports })
 }
 
-// ── @schema 파싱 ──
-fn parse_schema_block(pair: pest::iterators::Pair<Rule>) -> Result<SchemaBlock, String> {
-    let mut definitions = Vec::new();
-    for inner in pair.into_inner() {
-        if inner.as_rule() == Rule::schema_def {
-            let mut name = String::new();
-            let mut is_enum = false;
-            let mut fields = Vec::new();
-            for part in inner.into_inner() {
-                match part.as_rule() {
-                    Rule::identifier => {
-                        if name.is_empty() {
-                            name = part.as_str().to_string();
-                        } else if part.as_str() == "enum" {
-                            is_enum = true;
-                        }
-                    }
-                    Rule::schema_field => {
-                        let mut fname = String::new();
-                        let mut type_expr = None;
-                        let mut attributes = Vec::new();
-                        for fp in part.into_inner() {
-                            match fp.as_rule() {
-                                Rule::identifier => fname = fp.as_str().to_string(),
-                                Rule::type_expr => type_expr = Some(fp.as_str().to_string()),
-                                Rule::field_attrs => {
-                                    for attr in fp.into_inner() {
-                                        attributes.push(attr.as_str().to_string());
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        fields.push(SchemaField { name: fname, type_expr, attributes });
-                    }
-                    _ => {}
-                }
-            }
-            definitions.push(SchemaDef { name, is_enum, fields });
-        }
-    }
-    Ok(SchemaBlock { definitions })
-}
-
-// ── @contract 파싱 ──
-fn parse_contract_block(pair: pest::iterators::Pair<Rule>) -> Result<ContractBlock, String> {
-    let mut name = String::new();
-    let mut fields = Vec::new();
-    let mut preconditions = Vec::new();
-    let mut postconditions = Vec::new();
-    let mut invariants = Vec::new();
-    let mut recovery = Vec::new();
-    let mut states = None;
-    let mut transitions = Vec::new();
-
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::identifier => name = inner.as_str().to_string(),
-            Rule::contract_body => {
-                let body = inner.into_inner().next().unwrap();
-                match body.as_rule() {
-                    Rule::contract_field => fields.push(parse_field(body)?),
-                    Rule::precondition_block => {
-                        for stmt in body.into_inner() {
-                            if stmt.as_rule() == Rule::condition_stmt {
-                                preconditions.push(parse_condition_stmt(stmt));
-                            }
-                        }
-                    }
-                    Rule::postcondition_block => {
-                        for stmt in body.into_inner() {
-                            if stmt.as_rule() == Rule::condition_stmt {
-                                postconditions.push(parse_condition_stmt(stmt));
-                            }
-                        }
-                    }
-                    Rule::invariant_block => {
-                        for stmt in body.into_inner() {
-                            invariants.push(stmt.as_str().to_string());
-                        }
-                    }
-                    Rule::recovery_block => {
-                        for stmt in body.into_inner() {
-                            recovery.push(stmt.as_str().to_string());
-                        }
-                    }
-                    Rule::states_block => {
-                        for part in body.into_inner() {
-                            if part.as_rule() == Rule::identifier {
-                                states = Some(part.as_str().to_string());
-                            }
-                        }
-                    }
-                    Rule::transitions_block => {
-                        for stmt in body.into_inner() {
-                            if stmt.as_rule() == Rule::transition_stmt {
-                                let parts: Vec<_> = stmt.into_inner().collect();
-                                if parts.len() >= 3 {
-                                    transitions.push(TransitionStmt {
-                                        from: parts[0].as_str().to_string(),
-                                        to: parts[1].as_str().to_string(),
-                                        on_event: parts[2].as_str().to_string(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(ContractBlock { name, fields, preconditions, postconditions, invariants, recovery, states, transitions })
-}
-
-// ── @rule 파싱 ──
+// ── @rule parsing ──
 fn parse_rule_block(pair: pest::iterators::Pair<Rule>) -> Result<RuleBlock, String> {
     let mut name = String::new();
     let mut fields = Vec::new();
@@ -225,7 +113,7 @@ fn parse_rule_block(pair: pest::iterators::Pair<Rule>) -> Result<RuleBlock, Stri
             Rule::rule_body => {
                 let body = inner.into_inner().next().unwrap();
                 match body.as_rule() {
-                    Rule::rule_field => fields.push(parse_field(body)?),
+                    Rule::rule_field => fields.push(parse_nonreserved_field(body, &["blacklist", "check", "on_match"])?),
                     Rule::check_block => {
                         for stmt in body.into_inner() {
                             if stmt.as_rule() == Rule::condition_stmt {
@@ -255,7 +143,7 @@ fn parse_rule_block(pair: pest::iterators::Pair<Rule>) -> Result<RuleBlock, Stri
     Ok(RuleBlock { name, fields, checks, blacklist, on_match })
 }
 
-// ── @workflow 파싱 ──
+// ── @workflow parsing ──
 fn parse_workflow_block(pair: pest::iterators::Pair<Rule>) -> Result<WorkflowBlock, String> {
     let mut name = String::new();
     let mut fields = Vec::new();
@@ -268,7 +156,7 @@ fn parse_workflow_block(pair: pest::iterators::Pair<Rule>) -> Result<WorkflowBlo
             Rule::workflow_body => {
                 let body = inner.into_inner().next().unwrap();
                 match body.as_rule() {
-                    Rule::workflow_field => fields.push(parse_field(body)?),
+                    Rule::workflow_field => fields.push(parse_nonreserved_field(body, &["apply_contracts"])?),
                     Rule::apply_contracts => {
                         for part in body.into_inner() {
                             if part.as_rule() == Rule::identifier_list {
@@ -314,11 +202,10 @@ fn parse_step_block(pair: pest::iterators::Pair<Rule>) -> Result<StepBlock, Stri
                     Rule::expect_block => {
                         for stmt in body.into_inner() {
                             if stmt.as_rule() == Rule::expect_stmt {
-                                let text = stmt.as_str().to_string();
-                                let parts: Vec<&str> = text.splitn(2, "=>").collect();
+                                let (condition, action) = condition_parts(&stmt);
                                 expects.push(ExpectStmt {
-                                    condition: parts.first().unwrap_or(&"").trim().to_string(),
-                                    action: parts.get(1).unwrap_or(&"").trim().to_string(),
+                                    condition,
+                                    action,
                                 });
                             }
                         }
@@ -333,7 +220,31 @@ fn parse_step_block(pair: pest::iterators::Pair<Rule>) -> Result<StepBlock, Stri
     Ok(StepBlock { name, fields, output, expects })
 }
 
-// ── @query 파싱 ──
+// ── @recipe parsing ──
+fn parse_recipe_block(pair: pest::iterators::Pair<Rule>) -> Result<RecipeBlock, String> {
+    let mut name = String::new();
+    let mut fields = Vec::new();
+    let mut steps = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::identifier => name = inner.as_str().to_string(),
+            Rule::recipe_body => {
+                let body = inner.into_inner().next().unwrap();
+                match body.as_rule() {
+                    Rule::recipe_field => fields.push(parse_field(body)?),
+                    Rule::step_block => steps.push(parse_step_block(body)?),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(RecipeBlock { name, fields, steps })
+}
+
+// ── @query parsing ──
 fn parse_query_block(pair: pest::iterators::Pair<Rule>) -> Result<QueryBlock, String> {
     let mut name = String::new();
     let mut fields = Vec::new();
@@ -363,7 +274,7 @@ fn parse_query_block(pair: pest::iterators::Pair<Rule>) -> Result<QueryBlock, St
     Ok(QueryBlock { name, fields, sql })
 }
 
-// ── @semantic 파싱 ──
+// ── @semantic parsing ──
 fn parse_semantic_block(pair: pest::iterators::Pair<Rule>) -> Result<SemanticBlock, String> {
     let mut name = String::new();
     let mut fields = Vec::new();
@@ -412,7 +323,7 @@ fn parse_semantic_block(pair: pest::iterators::Pair<Rule>) -> Result<SemanticBlo
     Ok(SemanticBlock { name, fields, indexes, aliases })
 }
 
-// ── 공통 헬퍼 ──
+// ── Common helpers ──
 fn parse_field(pair: pest::iterators::Pair<Rule>) -> Result<Field, String> {
     let mut key = String::new();
     let mut val = Value::String(String::new());
@@ -453,12 +364,26 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> Value {
     }
 }
 
+fn parse_nonreserved_field(pair: pest::iterators::Pair<Rule>, reserved: &[&str]) -> Result<Field, String> {
+    let field = parse_field(pair)?;
+    if reserved.contains(&field.key.as_str()) {
+        return Err(format!("Invalid syntax for reserved construct '{}'", field.key));
+    }
+    Ok(field)
+}
+
+fn condition_parts(pair: &pest::iterators::Pair<Rule>) -> (String, String) {
+    let expression = pair.clone().into_inner().next().expect("condition expression");
+    let offset = expression.as_span().end() - pair.as_span().start();
+    let action = pair.as_str()[offset..].trim_start().strip_prefix("=>").unwrap_or_default().trim();
+    (expression.as_str().trim().to_string(), action.to_string())
+}
+
 fn parse_condition_stmt(pair: pest::iterators::Pair<Rule>) -> ConditionStmt {
-    let text = pair.as_str().to_string();
-    let parts: Vec<&str> = text.splitn(2, "=>").collect();
+    let (expression, message) = condition_parts(&pair);
     ConditionStmt {
-        expression: parts.first().unwrap_or(&"").trim().to_string(),
-        message: strip_quotes(parts.get(1).unwrap_or(&"").trim()),
+        expression,
+        message: strip_quotes(&message),
     }
 }
 
@@ -467,7 +392,14 @@ fn strip_quotes(s: &str) -> String {
     if s.starts_with("\"\"\"") && s.ends_with("\"\"\"") {
         s[3..s.len()-3].to_string()
     } else if s.starts_with('"') && s.ends_with('"') {
-        s[1..s.len()-1].to_string()
+        let mut result = String::new();
+        let mut chars = s[1..s.len()-1].chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '\\' && chars.peek().is_some_and(|next| matches!(next, '"' | '\\')) {
+                result.push(chars.next().expect("peeked escape"));
+            } else { result.push(ch); }
+        }
+        result
     } else {
         s.to_string()
     }
@@ -487,7 +419,7 @@ mod tests {
 }
 "#;
         let result = parse_n2(source);
-        assert!(result.is_ok(), "파싱 실패: {:?}", result.err());
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
         let file = result.unwrap();
         assert_eq!(file.blocks.len(), 1);
     }
@@ -519,7 +451,7 @@ mod tests {
 }
 "#;
         let result = parse_n2(source);
-        assert!(result.is_ok(), "파싱 실패: {:?}", result.err());
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
         let file = result.unwrap();
         assert_eq!(file.blocks.len(), 2);
     }

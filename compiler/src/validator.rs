@@ -1,8 +1,11 @@
-// Schema Validator — @schema 블록의 타입/필수필드/범위 검증
-use crate::ast::*;
+// Schema Validator — type/required field/range validation for @schema blocks
+use super::ast::*;
 use std::collections::HashMap;
+mod meta;
+mod schema;
+mod workflow;
 
-/// 검증 에러
+/// Validation error
 #[derive(Debug)]
 pub struct ValidationError {
     pub block: String,
@@ -27,190 +30,48 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-/// N2File 전체를 검증
+/// Validate the entire N2File
 pub fn validate(file: &N2File) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 
-    // 1. @meta 블록 필수 검증
-    validate_meta_required(file, &mut errors);
+    // 1. Validate required @meta block
+    meta::validate(file, &mut errors);
 
-    // 2. @schema 정의 수집
-    let _schema_defs = collect_schema_defs(file);
+    // 2. Validate schema structure
+    schema::validate(file, &mut errors);
 
-    // 3. @workflow 검증
-    validate_workflows(file, &mut errors);
+    // 3. Validate @workflow blocks
+    workflow::validate(file, &mut errors);
 
-    // 4. @contract 검증
+    // 4. Validate @contract blocks
     validate_contracts(file, &mut errors);
 
-    // 5. @rule 검증
+    // 5. Validate @rule blocks
     validate_rules(file, &mut errors);
 
-    // 6. 중복 이름 검증
+    // 6. Validate unique names
     validate_unique_names(file, &mut errors);
 
     errors
 }
 
-/// @meta 블록 필수 필드 검증
-fn validate_meta_required(file: &N2File, errors: &mut Vec<ValidationError>) {
-    let meta_blocks: Vec<_> = file.blocks.iter().filter_map(|b| {
-        if let Block::Meta(m) = b { Some(m) } else { None }
-    }).collect();
-
-    if meta_blocks.is_empty() {
-        errors.push(ValidationError {
-            block: "@meta".to_string(),
-            field: "(missing)".to_string(),
-            message: "@meta 블록은 필수입니다".to_string(),
-            severity: Severity::Error,
-        });
-        return;
-    }
-
-    if meta_blocks.len() > 1 {
-        errors.push(ValidationError {
-            block: "@meta".to_string(),
-            field: "(duplicate)".to_string(),
-            message: "@meta 블록은 하나만 허용됩니다".to_string(),
-            severity: Severity::Error,
-        });
-    }
-
-    let meta = &meta_blocks[0];
-    let required_fields = ["name", "enforce"];
-    for req in &required_fields {
-        if !meta.fields.iter().any(|f| f.key == *req) {
-            errors.push(ValidationError {
-                block: "@meta".to_string(),
-                field: req.to_string(),
-                message: format!("필수 필드 '{}'가 누락되었습니다", req),
-                severity: Severity::Error,
-            });
-        }
-    }
-
-    // enforce 값 검증
-    if let Some(enforce_field) = meta.fields.iter().find(|f| f.key == "enforce") {
-        let valid_values = ["strict", "warn", "passive"];
-        let val = match &enforce_field.value {
-            Value::String(s) => s.clone(),
-            Value::Identifier(s) => s.clone(),
-            _ => String::new(),
-        };
-        if !valid_values.contains(&val.as_str()) {
-            errors.push(ValidationError {
-                block: "@meta".to_string(),
-                field: "enforce".to_string(),
-                message: format!("'{}' 는 유효하지 않습니다. strict|warn|passive 중 하나여야 합니다", val),
-                severity: Severity::Error,
-            });
-        }
-    }
-}
-
-/// @schema 정의 수집 (추후 타입 체크용)
-fn collect_schema_defs(file: &N2File) -> HashMap<String, &SchemaDef> {
-    let mut defs = HashMap::new();
-    for block in &file.blocks {
-        if let Block::Schema(schema) = block {
-            for def in &schema.definitions {
-                defs.insert(def.name.clone(), def);
-            }
-        }
-    }
-    defs
-}
-
-/// @workflow 검증
-fn validate_workflows(file: &N2File, errors: &mut Vec<ValidationError>) {
-    for block in &file.blocks {
-        if let Block::Workflow(wf) = block {
-            // 이름 필수
-            if wf.name.is_empty() {
-                errors.push(ValidationError {
-                    block: "@workflow".to_string(),
-                    field: "name".to_string(),
-                    message: "워크플로우 이름이 필요합니다".to_string(),
-                    severity: Severity::Error,
-                });
-            }
-
-            // step이 최소 1개
-            if wf.steps.is_empty() {
-                errors.push(ValidationError {
-                    block: format!("@workflow {}", wf.name),
-                    field: "steps".to_string(),
-                    message: "워크플로우에 최소 1개의 step이 필요합니다".to_string(),
-                    severity: Severity::Error,
-                });
-            }
-
-            // step 이름 중복 검사
-            let mut step_names: Vec<&str> = Vec::new();
-            for step in &wf.steps {
-                if step_names.contains(&step.name.as_str()) {
-                    errors.push(ValidationError {
-                        block: format!("@workflow {}", wf.name),
-                        field: format!("step {}", step.name),
-                        message: format!("중복된 step 이름: '{}'", step.name),
-                        severity: Severity::Error,
-                    });
-                }
-                step_names.push(&step.name);
-            }
-
-            // depends_on 참조 검증
-            for step in &wf.steps {
-                for field in &step.fields {
-                    if field.key == "depends_on" {
-                        let dep = match &field.value {
-                            Value::String(s) => s.clone(),
-                            Value::Identifier(s) => s.clone(),
-                            _ => String::new(),
-                        };
-                        if !dep.is_empty() && !step_names.contains(&dep.as_str()) {
-                            errors.push(ValidationError {
-                                block: format!("@workflow {}", wf.name),
-                                field: format!("step {}", step.name),
-                                message: format!("depends_on '{}' 는 존재하지 않는 step입니다", dep),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// @contract 검증
 fn validate_contracts(file: &N2File, errors: &mut Vec<ValidationError>) {
     for block in &file.blocks {
-        if let Block::Contract(ct) = block {
-            if ct.name.is_empty() {
-                errors.push(ValidationError {
-                    block: "@contract".to_string(),
-                    field: "name".to_string(),
-                    message: "계약 이름이 필요합니다".to_string(),
-                    severity: Severity::Error,
-                });
-            }
-
-            // transitions 검증: from/to 상태가 states에 정의되어 있는지
-            if !ct.transitions.is_empty() && ct.states.is_none() {
-                errors.push(ValidationError {
-                    block: format!("@contract {}", ct.name),
-                    field: "transitions".to_string(),
-                    message: "transitions를 정의하려면 states도 정의해야 합니다".to_string(),
-                    severity: Severity::Error,
-                });
-            }
+        let Block::Contract(contract) = block else { continue; };
+        let name = format!("@contract {}", contract.name);
+        if contract.name.is_empty() { error(errors, &name, "name", "Contract name is required"); }
+        for issue in super::contract::definition::issues(file, contract) {
+            error(errors, &name, "transitions", &issue.message);
         }
     }
 }
 
-/// @rule 검증
+fn error(errors: &mut Vec<ValidationError>, block: &str, field: &str, message: &str) {
+    errors.push(ValidationError { block: block.into(), field: field.into(),
+        message: message.into(), severity: Severity::Error });
+}
+
+/// Validate @rule blocks
 fn validate_rules(file: &N2File, errors: &mut Vec<ValidationError>) {
     for block in &file.blocks {
         if let Block::Rule(rule) = block {
@@ -223,7 +84,7 @@ fn validate_rules(file: &N2File, errors: &mut Vec<ValidationError>) {
                 });
             }
 
-            // check도 없고 blacklist도 없으면 경고
+            // Warn if both check and blacklist are empty
             if rule.checks.is_empty() && rule.blacklist.is_empty() {
                 errors.push(ValidationError {
                     block: format!("@rule {}", rule.name),
@@ -236,7 +97,7 @@ fn validate_rules(file: &N2File, errors: &mut Vec<ValidationError>) {
     }
 }
 
-/// 블록 이름 중복 검증
+/// Validate block name uniqueness
 fn validate_unique_names(file: &N2File, errors: &mut Vec<ValidationError>) {
     let mut names: HashMap<String, String> = HashMap::new();
 
@@ -301,7 +162,7 @@ mod tests {
         let file = parse_n2(source).unwrap();
         let errors = validate(&file);
         let error_count = errors.iter().filter(|e| e.severity == Severity::Error).count();
-        assert_eq!(error_count, 0, "에러가 없어야 합니다: {:?}", errors);
+        assert_eq!(error_count, 0, "should have no errors: {:?}", errors);
     }
 
     #[test]

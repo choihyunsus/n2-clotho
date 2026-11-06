@@ -1,13 +1,13 @@
-// N2AST — .n2 언어의 추상 구문 트리 노드 정의
+// N2AST — abstract syntax tree node definitions for the .n2 language
 use serde::Serialize;
 
-/// .n2 파일 전체를 표현하는 루트 노드
+/// Root node representing an entire .n2 file
 #[derive(Debug, Serialize)]
 pub struct N2File {
     pub blocks: Vec<Block>,
 }
 
-/// Top-level 블록 타입
+/// Top-level block types
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum Block {
@@ -19,6 +19,7 @@ pub enum Block {
     Workflow(WorkflowBlock),
     Query(QueryBlock),
     Semantic(SemanticBlock),
+    Recipe(RecipeBlock),
 }
 
 // ── @meta ──
@@ -147,7 +148,17 @@ pub struct AliasDef {
     pub target: String,
 }
 
-// ── 공통 ──
+// ── @recipe ──
+/// Lifecycle recipe — ordered step sequence enforced by the N2R executor.
+/// Phases: boot, work_start, work_loop, work_end, end.
+#[derive(Debug, Serialize)]
+pub struct RecipeBlock {
+    pub name: String,
+    pub fields: Vec<Field>,
+    pub steps: Vec<StepBlock>,
+}
+
+// ── Common ──
 #[derive(Debug, Serialize)]
 pub struct Field {
     pub key: String,

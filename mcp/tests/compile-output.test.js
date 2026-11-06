@@ -1,132 +1,88 @@
-// Compilation output verification tests — validates generated code correctness
-const { describe, it } = require('node:test');
+// Verify real WASM output, executable TypeScript and MCP error propagation.
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const vm = require('node:vm');
+const ts = require('typescript');
+const { z } = require('zod');
+const wasm = require('../wasm/n2_compiler.js');
+const pkg = require('../package.json');
+const { compileSource, readSource } = require('../tools/runtime');
+const { registerCompileTools } = require('../tools/compile');
+const { registerBatchTools } = require('../tools/batch');
+const { registerValidateTools } = require('../tools/validate');
+const compiler = { type: 'wasm', module: wasm };
+const source = `@meta { name: "Probe" version: "1" enforce: strict }
+@contract Gate { states: Mode transitions { Idle -> Ready : on boot Ready -> Done : on end } }
+@rule Safe { blacklist: [/blocked/] }`;
+const handlers = {};
+const server = { tool(name, description, schema, handler) { handlers[name] = handler; } };
+registerCompileTools(server, z, compiler);
+registerBatchTools(server, z, compiler);
+registerValidateTools(server, z, compiler);
 
-const COMPILER_DIR = path.resolve(__dirname, '../../compiler');
-const EXAMPLES_DIR = path.join(COMPILER_DIR, 'examples');
-const COMPILER_BIN = path.join(COMPILER_DIR, 'target/release/n2-compiler.exe');
-
-// Helper: compile a .n2 file to a specific target
-function compile(filename, target = 'all') {
-  const filepath = path.join(EXAMPLES_DIR, filename);
-  execSync(
-    `cargo run --release -- compile "${filepath}" --target=${target}`,
-    { cwd: COMPILER_DIR, stdio: 'pipe' }
-  );
+for (const target of ['rust', 'c', 'cpp', 'go', 'python', 'ts']) {
+    test(`WASM generates ${target} with matching version and metadata`, () => {
+        const code = compileSource(compiler, source, target);
+        assert.ok(code.includes('Gate') || code.includes('gate'));
+        assert.ok(code.includes('blocked'));
+        assert.ok(code.includes(`n2c v${pkg.version}`));
+        assert.match(code, /Compiled:.*\d{4}-\d{2}-\d{2}T/);
+        if (target === 'c') assert.match(code, /#endif/);
+    });
 }
 
-// Helper: read generated output file
-function readOutput(basename, ext) {
-  return fs.readFileSync(path.join(EXAMPLES_DIR, `${basename}${ext}`), 'utf-8');
-}
-
-describe('Compiler Build', () => {
-  it('should build successfully', () => {
-    const output = execSync('cargo build --release 2>&1', {
-      cwd: COMPILER_DIR,
-      encoding: 'utf-8',
-    });
-    assert.ok(!output.includes('error['), 'Build should have no errors');
-  });
-
-  it('should report version 3.0.0', () => {
-    const output = execSync('cargo run --release -- backends', {
-      cwd: COMPILER_DIR,
-      encoding: 'utf-8',
-    });
-    assert.ok(output.includes('v3.0.0'), 'Version should be 3.0.0');
-  });
+test('generated TypeScript actually enforces transitions and blacklist matches', () => {
+    const code = compileSource(compiler, source, 'ts');
+    const javascript = ts.transpileModule(code, { compilerOptions: {
+        target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+    const sandbox = { exports: {} };
+    vm.runInNewContext(javascript, sandbox, { timeout: 1000 });
+    const { Gate, SafeRule } = sandbox.exports;
+    const gate = new Gate();
+    assert.equal(gate.currentState, 'Idle');
+    assert.throws(() => gate.transition('end'));
+    assert.equal(gate.currentState, 'Idle');
+    assert.equal(gate.transition('boot'), 'Ready');
+    assert.equal(gate.transition('end'), 'Done');
+    assert.throws(() => gate.transition('boot'));
+    assert.equal(gate.currentState, 'Done');
+    assert.ok(SafeRule.checkBlacklist('blocked'));
+    assert.equal(SafeRule.checkBlacklist('allowed'), null);
 });
 
-describe('CLI --target parsing', () => {
-  it('--target=rust (joined) compiles only rust', () => {
-    compile('soul-boot.n2', 'rust');
-    const out = readOutput('soul-boot', '.n2rs');
-    assert.ok(out.includes('Rust target'), 'Should be Rust output');
-  });
-
-  it('--target rust (space-separated) compiles only rust', () => {
-    const filepath = path.join(EXAMPLES_DIR, 'soul-boot.n2');
-    const output = execSync(
-      `cargo run --release -- compile "${filepath}" --target rust`,
-      { cwd: COMPILER_DIR, encoding: 'utf-8' }
-    );
-    assert.ok(output.includes('rust →'), 'Should compile rust target');
-    assert.ok(!output.includes('Compiling to all targets'), 'Should NOT compile all targets');
-  });
-
-  it('--target=all compiles all 6 targets', () => {
-    const filepath = path.join(EXAMPLES_DIR, 'soul-boot.n2');
-    const output = execSync(
-      `cargo run --release -- compile "${filepath}" --target=all`,
-      { cwd: COMPILER_DIR, encoding: 'utf-8' }
-    );
-    assert.ok(output.includes('6 success'), 'Should compile all 6 targets');
-  });
+test('compile and batch tools return generated code', async () => {
+    const result = await handlers.clotho_compile({ source, target: 'python' });
+    assert.ok(!result.isError);
+    assert.match(JSON.parse(result.content[0].text).code, /class Gate/);
+    const batch = await handlers.clotho_batch({ source });
+    assert.ok(!batch.isError);
+    assert.equal(JSON.parse(batch.content[0].text).outputs.filter(item => item.code).length, 6);
 });
 
-describe('C backend — #endif guard', () => {
-  it('generated .n2c should have closing #endif', () => {
-    compile('soul-boot.n2', 'c');
-    const code = readOutput('soul-boot', '.n2c');
-    assert.ok(code.includes('#ifndef N2_CONTRACT_H'), 'Should have #ifndef guard');
-    assert.ok(code.includes('#endif'), 'Should have closing #endif');
-  });
+test('unsupported executable constraints fail every target', async () => {
+    const unsupported = '@meta { name: "Probe" enforce: strict } @rule Safe { check { $input.ready == true => "required" } }';
+    const result = await handlers.clotho_batch({ source: unsupported });
+    assert.equal(result.isError, true);
+    assert.equal(JSON.parse(result.content[0].text).outputs.filter(item => item.error).length, 6);
+    const invalid = await handlers.clotho_validate({ source: '@meta {' });
+    assert.equal(invalid.isError, true);
+    const missing = await handlers.clotho_compile({ source: 'missing-file.n2', target: 'ts' });
+    assert.equal(missing.isError, true);
 });
 
-describe('Go backend — conditional imports', () => {
-  it('soul-boot (no contract) should NOT import fmt', () => {
-    compile('soul-boot.n2', 'go');
-    const code = readOutput('soul-boot', '.n2go');
-    assert.ok(!code.includes('"fmt"'), 'Should NOT import fmt when no contract');
-    assert.ok(code.includes('"strings"'), 'Should import strings for blacklist rule');
-  });
-
-  it('auto-build (has contract + rule) should import both fmt and strings', () => {
-    compile('auto-build.n2', 'go');
-    const code = readOutput('auto-build', '.n2go');
-    assert.ok(code.includes('"fmt"'), 'Should import fmt for contract');
-    assert.ok(code.includes('"strings"'), 'Should import strings for rule');
-  });
+test('partial batches report actual errors alongside successful outputs', async () => {
+    const regexSource = '@meta { name: "Probe" enforce: strict } @rule Safe { blacklist: [/secret[0-9]+/i] }';
+    const batch = await handlers.clotho_batch({ source: regexSource });
+    assert.equal(batch.isError, true);
+    const outputs = JSON.parse(batch.content[0].text).outputs;
+    assert.ok(outputs.find(item => item.target === 'c').error);
+    assert.ok(outputs.find(item => item.target === 'python').code);
 });
 
-describe('Blacklist pattern cleaning', () => {
-  // Tests that /DROP TABLE/i is correctly cleaned to "DROP TABLE" (no trailing /)
-  const TARGETS = ['n2rs', 'n2c', 'n2c2', 'n2go', 'n2py', 'n2ts'];
-
-  it('compile soul-boot to all targets', () => {
-    compile('soul-boot.n2', 'all');
-  });
-
-  for (const ext of TARGETS) {
-    it(`${ext}: DROP TABLE pattern should NOT have trailing /`, () => {
-      const code = readOutput('soul-boot', `.${ext}`);
-      assert.ok(code.includes('DROP TABLE'), `Should contain DROP TABLE in .${ext}`);
-      assert.ok(!code.includes('DROP TABLE/'), `Should NOT contain DROP TABLE/ in .${ext}`);
-    });
-  }
-});
-
-describe('ISO 8601 timestamp', () => {
-  it('compiled output should have real ISO 8601 timestamp', () => {
-    compile('soul-boot.n2', 'rust');
-    const code = readOutput('soul-boot', '.n2rs');
-    // Should match YYYY-MM-DDTHH:MM:SSZ pattern
-    const timestampMatch = code.match(/Compiled:\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
-    assert.ok(timestampMatch, 'Should have ISO 8601 timestamp');
-    assert.ok(!code.includes('compiled-by-n2c'), 'Should NOT have fake timestamp');
-  });
-});
-
-describe('Version consistency', () => {
-  it('all outputs should reference n2c v3.0.0', () => {
-    compile('soul-boot.n2', 'all');
-    for (const ext of ['.n2rs', '.n2c', '.n2c2', '.n2go', '.n2py', '.n2ts']) {
-      const code = readOutput('soul-boot', ext);
-      assert.ok(code.includes('n2c v3.0.0'), `${ext} should reference n2c v3.0.0`);
-    }
-  });
+test('validation errors propagate and source input is bounded', async () => {
+    const result = await handlers.clotho_validate({ source: '@rule Safe { blacklist: [/blocked/] }' });
+    assert.equal(result.isError, true);
+    assert.throws(() => readSource('x'.repeat(1024 * 1024 + 1)), /1 MiB/);
+    assert.throws(() => readSource(''), /required/);
+    assert.match(wasm.n2c_version(), new RegExp(pkg.version.replaceAll('.', '\\.')));
 });

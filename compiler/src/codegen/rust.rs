@@ -1,6 +1,6 @@
 // Rust codegen backend — AST to .n2rs compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct RustBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for RustBackend {
     fn file_extension(&self) -> &str { ".n2rs" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         emit_header(&mut out, meta);
@@ -35,8 +36,8 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          // Version: {}\n\
          // Compiler: {}\n\
          // Compiled: {}\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
@@ -59,32 +60,8 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
 
     let name = &ct.name;
 
-    // Emit state enum
     let states = collect_states(&ct.transitions);
-    out.push_str(&format!("/// State machine: {}\n", name));
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n");
-    out.push_str(&format!("pub enum {}State {{\n", name));
-    for s in &states {
-        out.push_str(&format!("    {},\n", s));
-    }
-    out.push_str("}\n\n");
-
-    // Emit contract struct
-    out.push_str(&format!(
-        "pub struct {} {{\n\
-         \x20   state: {}State,\n\
-         }}\n\n",
-        name, name
-    ));
-
-    // Emit impl
-    out.push_str(&format!("impl {} {{\n", name));
-    out.push_str(&format!(
-        "    pub fn new() -> Self {{\n\
-         \x20       {} {{ state: {}State::{} }}\n\
-         \x20   }}\n\n",
-        name, name, states[0]
-    ));
+    emit_contract_start(out, name, &states);
 
     out.push_str(
         "    pub fn current_state(&self) -> &str {\n\
@@ -123,28 +100,43 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     out.push_str("}\n\n");
 }
 
-fn emit_rule(out: &mut String, rule: &RuleBlock) {
-    let name = &rule.name;
-    out.push_str(&format!("/// Rule: {}\n", name));
-    out.push_str(&format!("pub struct {}Rule;\n\n", name));
-    out.push_str(&format!("impl {}Rule {{\n", name));
-
-    if !rule.blacklist.is_empty() {
-        out.push_str("    pub fn check_blacklist(input: &str) -> Option<&'static str> {\n");
-        out.push_str("        let patterns: &[&str] = &[\n");
-        for p in &rule.blacklist {
-            let clean = clean_pattern(p);
-            out.push_str(&format!("            \"{}\",\n", clean));
-        }
-        out.push_str("        ];\n");
-        out.push_str("        for p in patterns {\n");
-        out.push_str("            if input.contains(p) { return Some(p); }\n");
-        out.push_str("        }\n");
-        out.push_str("        None\n");
-        out.push_str("    }\n");
+fn emit_contract_start(out: &mut String, name: &str, states: &[String]) {
+    // Emit state enum
+    out.push_str(&format!("/// State machine: {}\n", name));
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n");
+    out.push_str(&format!("pub enum {}State {{\n", name));
+    for s in states {
+        out.push_str(&format!("    {},\n", s));
     }
-
     out.push_str("}\n\n");
+
+    // Emit contract struct
+    out.push_str(&format!(
+        "pub struct {} {{\n\
+         \x20   state: {}State,\n\
+         }}\n\n",
+        name, name
+    ));
+
+    // Emit impl
+    out.push_str(&format!("impl {} {{\n", name));
+    out.push_str(&format!(
+        "    pub fn new() -> Self {{\n\
+         \x20       {} {{ state: {}State::{} }}\n\
+         \x20   }}\n\n",
+        name, name, states[0]
+    ));
+
+}
+
+fn emit_rule(out: &mut String, rule: &RuleBlock) {
+    out.push_str(&format!("pub struct {}Rule;\nimpl {}Rule {{\n", rule.name, rule.name));
+    out.push_str("    // Requires the regex crate (1.x) in the consuming Cargo.toml.\n    pub fn check_blacklist(input: &str) -> Option<&'static str> {\n");
+    for p in &rule.blacklist {
+        let pattern = super::patterns::expression(p);
+        out.push_str(&format!("        if regex::Regex::new({:?}).expect(\"validated blacklist\").is_match(input) {{ return Some({:?}); }}\n", pattern, p));
+    }
+    out.push_str("        None\n    }\n}\n\n");
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
@@ -152,7 +144,7 @@ fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
     out.push_str(&format!("/// Workflow: {}\n", name));
     out.push_str(&format!("pub struct {}Workflow;\n\n", name));
     out.push_str(&format!("impl {}Workflow {{\n", name));
-    out.push_str(&format!("    pub const STEPS: &'static [&'static str] = &[\n"));
+    out.push_str("    pub const STEPS: &'static [&'static str] = &[\n");
     for step in &wf.steps {
         out.push_str(&format!("        \"{}\",\n", step.name));
     }
@@ -163,7 +155,7 @@ fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {
 fn emit_schema(out: &mut String, schema: &SchemaBlock) {
     for def in &schema.definitions {
         if def.is_enum {
-            out.push_str(&format!("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n"));
+            out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
             out.push_str(&format!("pub enum {} {{\n", def.name));
             for f in &def.fields {
                 out.push_str(&format!("    {},\n", f.name));

@@ -6,6 +6,24 @@ use crate::parser::parse_n2;
 use crate::validator;
 use crate::contract::ContractRuntime;
 use crate::query::N2Registry;
+use crate::codegen::{BackendRegistry, CompilationMeta, extract_meta};
+
+/// Generate the requested language using the same validated backends as the CLI.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub fn compile_n2_wasm(source: &str, target: &str, compiled_at: &str) -> Result<String, JsValue> {
+    let ast = parse_n2(source).map_err(|error| JsValue::from_str(&error))?;
+    let registry = BackendRegistry::new();
+    let backend = registry.get(target).ok_or_else(|| JsValue::from_str("Unknown target"))?;
+    let (source_name, source_version) = extract_meta(&ast);
+    let meta = CompilationMeta {
+        source_name, source_version, target: target.into(),
+        extension: backend.file_extension().into(),
+        compiler_version: format!("n2c v{}", env!("CARGO_PKG_VERSION")),
+        compiled_at: compiled_at.into(),
+    };
+    registry.compile(&ast, target, &meta).map_err(|error| JsValue::from_str(&error.to_string()))
+}
 
 /// Parse .n2 source and return AST as JSON string
 #[cfg(feature = "wasm")]
@@ -97,5 +115,5 @@ pub fn extract_blacklist_wasm(source: &str) -> Result<String, JsValue> {
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]
 pub fn n2c_version() -> String {
-    "n2c v2.0.1-wasm (Clotho compiler)".to_string()
+    format!("n2c v{}-wasm (Clotho compiler)", env!("CARGO_PKG_VERSION"))
 }

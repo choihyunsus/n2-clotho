@@ -8,6 +8,7 @@ use n2_compiler::contract::ContractRuntime;
 use n2_compiler::query::N2Registry;
 use n2_compiler::codegen::{BackendRegistry, CompilationMeta, extract_meta};
 
+const COMMON_YEAR_MONTH_DAYS: [i64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -30,6 +31,23 @@ fn main() {
         ("parse", &args[1])
     };
 
+    let ast = load_ast(filepath);
+
+    match command {
+        "parse" => cmd_parse(&ast),
+        "validate" => cmd_validate(&ast),
+        "simulate" => cmd_simulate(&ast),
+        "query" => cmd_query(&ast, args.get(3).cloned()),
+        "compile" => cmd_compile(&ast, filepath, &args[3..]),
+        _ => {
+            eprintln!("Error: Unknown command '{}'", command);
+            print_usage();
+            std::process::exit(1);
+        }
+    }
+}
+
+fn load_ast(filepath: &str) -> n2_compiler::ast::N2File {
     let source = match fs::read_to_string(filepath) {
         Ok(s) => s,
         Err(e) => {
@@ -43,23 +61,10 @@ fn main() {
     println!();
 
     // Step 1: Parse
-    let ast = match parse_n2(&source) {
+    match parse_n2(&source) {
         Ok(ast) => ast,
         Err(e) => {
             eprintln!("Parse Error: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    match command {
-        "parse" => cmd_parse(&ast),
-        "validate" => cmd_validate(&ast),
-        "simulate" => cmd_simulate(&ast),
-        "query" => cmd_query(&ast, args.get(3).cloned()),
-        "compile" => cmd_compile(&ast, filepath, &args[3..]),
-        _ => {
-            eprintln!("Error: Unknown command '{}'", command);
-            print_usage();
             std::process::exit(1);
         }
     }
@@ -115,6 +120,18 @@ fn cmd_validate(ast: &n2_compiler::ast::N2File) {
     println!("── Step 3: Contract Check");
     let runtime = ContractRuntime::from_file(ast);
 
+    print_integrity(&runtime);
+
+    println!();
+    if error_count > 0 || !runtime.check_integrity().is_empty() {
+        println!("Validation failed: {} errors found", error_count);
+        std::process::exit(1);
+    } else {
+        println!("Validation complete: all checks passed!");
+    }
+}
+
+fn print_integrity(runtime: &ContractRuntime) {
     if runtime.machines.is_empty() {
         println!("  No state machine contracts (skipped)");
     } else {
@@ -133,13 +150,6 @@ fn cmd_validate(ast: &n2_compiler::ast::N2File) {
         }
     }
 
-    println!();
-    if error_count > 0 {
-        println!("Validation failed: {} errors found", error_count);
-        std::process::exit(1);
-    } else {
-        println!("Validation complete: all checks passed!");
-    }
 }
 
 fn cmd_simulate(ast: &n2_compiler::ast::N2File) {
@@ -192,33 +202,7 @@ fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, remaining_args: &
     let base_path = Path::new(filepath).with_extension("");
 
     if target == "all" {
-        println!("All targets batch compile");
-        println!();
-
-        let results = registry.compile_all(ast, &base_meta);
-        let mut success_count = 0;
-        let mut fail_count = 0;
-
-        for (target_name, ext, result) in &results {
-            let out_path = format!("{}{}", base_path.display(), ext);
-            match result {
-                Ok(code) => {
-                    fs::write(&out_path, code).unwrap_or_else(|e| {
-                        eprintln!("  {} write failed: {}", out_path, e);
-                    });
-                    println!("  {} → {} ({} bytes)", target_name, out_path, code.len());
-                    success_count += 1;
-                }
-                Err(e) => {
-                    eprintln!("  {} failed: {}", target_name, e);
-                    fail_count += 1;
-                }
-            }
-        }
-
-        println!();
-        println!("Result: {} success, {} failed / {} targets",
-            success_count, fail_count, results.len());
+        compile_all(&registry, ast, &base_meta, &base_path);
     } else {
         let mut meta = base_meta;
         meta.target = target.to_string();
@@ -241,6 +225,39 @@ fn cmd_compile(ast: &n2_compiler::ast::N2File, filepath: &str, remaining_args: &
             }
         }
     }
+}
+
+fn compile_all(registry: &BackendRegistry, ast: &n2_compiler::ast::N2File, base_meta: &CompilationMeta, base_path: &Path) {
+    println!("All targets batch compile");
+    println!();
+
+    let results = registry.compile_all(ast, base_meta);
+    let mut success_count = 0;
+    let mut fail_count = 0;
+
+    for (target_name, ext, result) in &results {
+        let out_path = format!("{}{}", base_path.display(), ext);
+        match result {
+            Ok(code) => {
+                if let Err(error) = fs::write(&out_path, code) {
+                    eprintln!("  {} write failed: {}", out_path, error);
+                    fail_count += 1;
+                    continue;
+                }
+                println!("  {} → {} ({} bytes)", target_name, out_path, code.len());
+                success_count += 1;
+            }
+            Err(e) => {
+                eprintln!("  {} failed: {}", target_name, e);
+                fail_count += 1;
+            }
+        }
+    }
+
+    println!();
+    println!("Result: {} success, {} failed / {} targets",
+        success_count, fail_count, results.len());
+    if fail_count > 0 { std::process::exit(1); }
 }
 
 /// Parse target argument from remaining CLI args
@@ -281,7 +298,7 @@ fn cmd_backends() {
 
 fn print_summary(ast: &n2_compiler::ast::N2File) {
     use n2_compiler::ast::Block;
-    let mut counts = [0u32; 8];
+    let mut counts = [0u32; 9];
     for block in &ast.blocks {
         match block {
             Block::Meta(_) => counts[0] += 1,
@@ -292,12 +309,13 @@ fn print_summary(ast: &n2_compiler::ast::N2File) {
             Block::Workflow(_) => counts[5] += 1,
             Block::Query(_) => counts[6] += 1,
             Block::Semantic(_) => counts[7] += 1,
+            Block::Recipe(_) => counts[8] += 1,
         }
     }
     
-    let names = ["@meta", "@import", "@schema", "@contract", "@rule", "@workflow", "@query", "@semantic"];
+    let names = ["@meta", "@import", "@schema", "@contract", "@rule", "@workflow", "@query", "@semantic", "@recipe"];
     let mut parts = Vec::new();
-    for i in 0..8 {
+    for i in 0..counts.len() {
         if counts[i] > 0 {
             parts.push(format!("{}:{}", names[i], counts[i]));
         }
@@ -327,10 +345,8 @@ fn chrono_now() -> String {
         y += 1;
     }
     let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-    let month_days = [
-        31, if leap { 29 } else { 28 }, 31, 30, 31, 30,
-        31, 31, 30, 31, 30, 31
-    ];
+    let mut month_days = COMMON_YEAR_MONTH_DAYS;
+    if leap { month_days[1] = 29; }
     let mut m = 0;
     for md in &month_days {
         if d < *md { break; }

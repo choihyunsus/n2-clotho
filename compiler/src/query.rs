@@ -1,7 +1,8 @@
-// SQL 쿼리 엔진 — @query 블록의 SQL 실행 + 도구/규칙/상태 가상 테이블
-use crate::ast::*;
+// SQL query engine — execute SQL from @query blocks + virtual tables for tools/rules/state
+use super::ast::*;
+mod select;
 
-/// 가상 레지스트리: .n2 파일에서 추출한 도구/규칙/계약 정보를 SQL로 쿼리 가능하게
+/// Virtual registry: tools/rules/contracts extracted from .n2 files, queryable via SQL
 #[derive(Debug)]
 pub struct N2Registry {
     pub tools: Vec<ToolEntry>,
@@ -42,7 +43,7 @@ pub struct WorkflowEntry {
     pub step_count: usize,
 }
 
-/// SQL 쿼리 결과
+/// SQL query result
 #[derive(Debug)]
 pub struct QueryResult {
     pub columns: Vec<String>,
@@ -55,7 +56,7 @@ impl std::fmt::Display for QueryResult {
             return write!(f, "(결과 없음)");
         }
 
-        // 컬럼 폭 계산
+        // Calculate column widths
         let mut widths: Vec<usize> = self.columns.iter().map(|c| c.len()).collect();
         for row in &self.rows {
             for (i, cell) in row.iter().enumerate() {
@@ -65,19 +66,19 @@ impl std::fmt::Display for QueryResult {
             }
         }
 
-        // 헤더
+        // Header
         let header: String = self.columns.iter().enumerate()
             .map(|(i, c)| format!("{:width$}", c, width = widths[i]))
             .collect::<Vec<_>>().join(" | ");
         writeln!(f, "{}", header)?;
 
-        // 구분선
+        // Separator
         let separator: String = widths.iter()
             .map(|w| "-".repeat(*w))
             .collect::<Vec<_>>().join("-+-");
         writeln!(f, "{}", separator)?;
 
-        // 행
+        // Rows
         for row in &self.rows {
             let line: String = row.iter().enumerate()
                 .map(|(i, c)| format!("{:width$}", c, width = widths.get(i).copied().unwrap_or(10)))
@@ -90,7 +91,7 @@ impl std::fmt::Display for QueryResult {
 }
 
 impl N2Registry {
-    /// N2File에서 레지스트리 구축
+    /// Build registry from N2File
     pub fn from_file(file: &N2File) -> Self {
         let tools = Vec::new();
         let mut rules = Vec::new();
@@ -138,22 +139,9 @@ impl N2Registry {
         N2Registry { tools, rules, contracts, workflows }
     }
 
-    /// 간단한 SQL-like 쿼리 실행 (SELECT ... FROM ... WHERE 패턴)
+    /// Execute the supported read-only SELECT subset, rejecting unhandled clauses.
     pub fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
-        let sql_lower = sql.to_lowercase().trim().to_string();
-
-        // 테이블 감지
-        if sql_lower.contains("from rules") || sql_lower.contains("from rule") {
-            Ok(self.query_rules())
-        } else if sql_lower.contains("from contracts") || sql_lower.contains("from contract") {
-            Ok(self.query_contracts())
-        } else if sql_lower.contains("from workflows") || sql_lower.contains("from workflow") {
-            Ok(self.query_workflows())
-        } else if sql_lower.contains("from tools") || sql_lower.contains("from tool") {
-            Ok(self.query_tools())
-        } else {
-            Err("지원하지 않는 테이블입니다. 사용 가능: rules, contracts, workflows, tools".to_string())
-        }
+        select::execute(self, sql)
     }
 
     fn query_rules(&self) -> QueryResult {
@@ -195,14 +183,14 @@ impl N2Registry {
         }
     }
 
-    /// 레지스트리 요약
+    /// Registry summary
     pub fn summary(&self) -> String {
         format!("📦 Registry: {} rules, {} contracts, {} workflows, {} tools",
             self.rules.len(), self.contracts.len(), self.workflows.len(), self.tools.len())
     }
 }
 
-/// Field에서 문자열 값 추출 헬퍼
+/// Helper to extract a string value from a Field
 fn get_field_str(fields: &[Field], key: &str) -> String {
     fields.iter()
         .find(|f| f.key == key)
@@ -219,9 +207,7 @@ mod tests {
     use super::*;
     use crate::parser::parse_n2;
 
-    #[test]
-    fn test_registry_from_file() {
-        let source = r#"
+    const REGISTRY_SOURCE: &str = r#"
 @meta {
   name: "test"
   enforce: strict
@@ -256,14 +242,17 @@ mod tests {
   }
 }
 "#;
-        let file = parse_n2(source).unwrap();
+
+    #[test]
+    fn test_registry_from_file() {
+        let file = parse_n2(REGISTRY_SOURCE).unwrap();
         let registry = N2Registry::from_file(&file);
 
         assert_eq!(registry.rules.len(), 1);
         assert_eq!(registry.contracts.len(), 1);
         assert_eq!(registry.workflows.len(), 1);
 
-        // SQL 쿼리 테스트
+        // SQL query tests
         let result = registry.execute_query("SELECT * FROM rules").unwrap();
         assert_eq!(result.rows.len(), 1);
         assert_eq!(result.rows[0][0], "NoInstall");

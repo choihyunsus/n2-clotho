@@ -2,6 +2,11 @@
 /* eslint-disable */
 
 /**
+ * Generate the requested language using the same validated backends as the CLI.
+ */
+export function compile_n2_wasm(source: string, target: string, compiled_at: string): string;
+
+/**
  * Extract blacklist patterns from .n2 source — returns JSON array
  */
 export function extract_blacklist_wasm(source: string): string;

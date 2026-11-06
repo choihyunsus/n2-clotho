@@ -1,6 +1,6 @@
 // Go codegen backend — AST to .n2go compiled contract
 use crate::ast::*;
-use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states, clean_pattern};
+use super::{CodeGenerator, CodegenError, CompilationMeta, collect_states};
 
 pub struct GoBackend;
 
@@ -9,6 +9,7 @@ impl CodeGenerator for GoBackend {
     fn file_extension(&self) -> &str { ".n2go" }
 
     fn generate(&self, ast: &N2File, meta: &CompilationMeta) -> Result<String, CodegenError> {
+        super::patterns::validate(ast, self.target_name())?;
         let mut out = String::with_capacity(4096);
 
         // Scan AST to determine which imports are needed
@@ -43,8 +44,8 @@ fn emit_header(out: &mut String, meta: &CompilationMeta) {
          // Version: {}\n\
          // Compiler: {}\n\
          // Compiled: {}\n\n",
-        meta.source_name, meta.source_version,
-        meta.compiler_version, meta.compiled_at
+        super::header_value(&meta.source_name), super::header_value(&meta.source_version),
+        super::header_value(&meta.compiler_version), super::header_value(&meta.compiled_at)
     ));
 }
 
@@ -58,7 +59,7 @@ fn emit_prelude(out: &mut String, needs_fmt: bool, needs_strings: bool) {
             out.push_str("\t\"fmt\"\n");
         }
         if needs_strings {
-            out.push_str("\t\"strings\"\n");
+            out.push_str("\t\"regexp\"\n");
         }
         out.push_str(")\n\n");
     }
@@ -84,25 +85,7 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     let name = &ct.name;
     let states = collect_states(&ct.transitions);
 
-    // Emit state constants
-    out.push_str(&format!("// State machine: {}\n", name));
-    out.push_str(&format!("type {}State int\n\n", name));
-    out.push_str("const (\n");
-    for (i, s) in states.iter().enumerate() {
-        if i == 0 {
-            out.push_str(&format!("\t{}_{} {}State = iota\n", name, s, name));
-        } else {
-            out.push_str(&format!("\t{}_{}\n", name, s));
-        }
-    }
-    out.push_str(")\n\n");
-
-    // State name map
-    out.push_str(&format!("var {}StateNames = map[{}State]string{{\n", name, name));
-    for s in &states {
-        out.push_str(&format!("\t{name}_{s}: \"{s}\",\n", name = name, s = s));
-    }
-    out.push_str("}\n\n");
+    emit_states(out, name, &states);
 
     // Struct
     out.push_str(&format!(
@@ -137,29 +120,36 @@ fn emit_contract(out: &mut String, ct: &ContractBlock) {
     ));
 }
 
+fn emit_states(out: &mut String, name: &str, states: &[String]) {
+    // Emit state constants
+    out.push_str(&format!("// State machine: {}\n", name));
+    out.push_str(&format!("type {}State int\n\n", name));
+    out.push_str("const (\n");
+    for (i, s) in states.iter().enumerate() {
+        if i == 0 {
+            out.push_str(&format!("\t{}_{} {}State = iota\n", name, s, name));
+        } else {
+            out.push_str(&format!("\t{}_{}\n", name, s));
+        }
+    }
+    out.push_str(")\n\n");
+
+    // State name map
+    out.push_str(&format!("var {}StateNames = map[{}State]string{{\n", name, name));
+    for s in states {
+        out.push_str(&format!("\t{name}_{s}: \"{s}\",\n", name = name, s = s));
+    }
+    out.push_str("}\n\n");
+
+}
+
 fn emit_rule(out: &mut String, rule: &RuleBlock) {
     if rule.blacklist.is_empty() { return; }
-
-    out.push_str(&format!("// Rule: {}\n", rule.name));
-    out.push_str(&format!(
-        "func {}CheckBlacklist(input string) (string, bool) {{\n\
-         \tpatterns := []string{{\n",
-        rule.name
-    ));
+    out.push_str(&format!("func {}CheckBlacklist(input string) (string, bool) {{\n", rule.name));
     for p in &rule.blacklist {
-        let clean = clean_pattern(p);
-        out.push_str(&format!("\t\t\"{}\",\n", clean));
+        out.push_str(&format!("\tif matched, err := regexp.MatchString({}, input); err != nil || matched {{ return {}, true }}\n", super::patterns::literal(&super::patterns::expression(p)), super::patterns::literal(p)));
     }
-    out.push_str(
-        "\t}\n\
-         \tfor _, p := range patterns {\n\
-         \t\tif strings.Contains(input, p) {\n\
-         \t\t\treturn p, true\n\
-         \t\t}\n\
-         \t}\n\
-         \treturn \"\", false\n\
-         }\n\n"
-    );
+    out.push_str("\treturn \"\", false\n}\n\n");
 }
 
 fn emit_workflow(out: &mut String, wf: &WorkflowBlock) {

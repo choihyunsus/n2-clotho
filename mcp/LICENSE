@@ -1,0 +1,53 @@
+# Dual License
+
+Copyright 2026 N2 (Hyunsoo Choi)
+
+This software is licensed under a **dual license** model:
+
+## 1. Open Source License — Apache License 2.0
+
+For **non-commercial**, **personal**, **educational**, and **open-source** use,
+this software is licensed under the Apache License, Version 2.0.
+
+You may obtain a copy of the Apache License at:
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The full text of the Apache License 2.0 is available in [LICENSE-APACHE](./LICENSE-APACHE).
+
+### What you CAN do under Apache 2.0:
+- Use in personal and educational projects
+- Use in open-source projects (non-commercial)
+- Modify and distribute (with attribution)
+- Study and learn from the code
+
+## 2. Commercial License
+
+For **commercial use** — including but not limited to:
+- Incorporating this software into commercial products or services
+- Using this software to generate revenue (directly or indirectly)
+- Deploying this software in a commercial/enterprise environment
+- Offering this software as part of a paid service (SaaS, PaaS, etc.)
+
+You **must** obtain a separate commercial license.
+
+### Contact for Commercial Licensing:
+- Email: lagi0730@gmail.com
+- GitHub: https://github.com/choihyunsus
+
+## Summary
+
+| Use Case | License | Cost |
+|----------|---------|------|
+| Personal / Educational | Apache 2.0 | Free |
+| Open-source (non-commercial) | Apache 2.0 | Free |
+| Commercial / Enterprise | Commercial License | Contact us |
+
+## Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

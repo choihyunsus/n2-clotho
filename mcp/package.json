@@ -1,20 +1,28 @@
 {
   "name": "n2-clotho",
-  "version": "3.2.0",
-  "description": "Compiled instruction language for AI agents — Define, compile, and enforce rules that markdown can't. Includes WASM runtime.",
-  "main": "server.js",
+  "version": "4.0.0",
+  "description": "N2 rule parser, validator, state-machine runtime and six-target code generator with bundled WASM and MCP tools",
+  "main": "wasm/n2_compiler.js",
   "type": "commonjs",
   "files": [
     "server.js",
-    "tools/",
-    "wasm/",
-    "README.md"
+    "tools/*.js",
+    "wasm/*.js",
+    "wasm/*.wasm",
+    "wasm/*.d.ts",
+    "README.md",
+    "README.ko.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "LICENSE-APACHE",
+    "LICENSE-DAEBUNG"
   ],
   "scripts": {
     "start": "node server.js",
-    "start:sse": "CLOTHO_TRANSPORT=sse node server.js",
-    "build:compiler": "cd ../compiler ; cargo build --release",
-    "test": "node --test tests/"
+    "start:sse": "node server.js --sse",
+    "build:compiler": "cargo build --manifest-path ../compiler/Cargo.toml --release --locked",
+    "test": "node --test tests/*.test.js",
+    "prepack": "npm test"
   },
   "keywords": [
     "mcp",
@@ -33,10 +41,14 @@
     "url": "https://github.com/choihyunsus/n2-clotho"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
     "zod": "^3.23.0"
-  }
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "types": "wasm/n2_compiler.d.ts"
 }

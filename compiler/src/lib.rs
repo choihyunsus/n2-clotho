@@ -8,3 +8,7 @@ pub mod codegen;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+mod utils;
+#[cfg(test)]
+mod semantic_tests;

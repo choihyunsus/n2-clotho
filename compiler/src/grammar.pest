@@ -1,4 +1,4 @@
-// .n2 언어 PEG 문법 정의 — QLN 2.0 파서
+// .n2 PEG grammar definition — Clotho parser
 // pest PEG parser grammar for the .n2 language
 
 // ── Whitespace & Comments ──
@@ -18,7 +18,13 @@ block = {
   | workflow_block
   | query_block
   | semantic_block
+  | recipe_block
 }
+
+// ── @recipe Block — Lifecycle sequence (boot/work_start/work_loop/work_end/end) ──
+recipe_block  = { "@recipe" ~ identifier ~ "{" ~ recipe_body* ~ "}" }
+recipe_body   = { step_block | recipe_field }
+recipe_field  = { identifier ~ ":" ~ value }
 
 // ── @meta Block ──
 meta_block = { "@meta" ~ "{" ~ meta_field* ~ "}" }
@@ -31,7 +37,8 @@ import_list    = { identifier ~ ("," ~ identifier)* }
 
 // ── @schema Block ──
 schema_block   = { "@schema" ~ "{" ~ schema_def* ~ "}" }
-schema_def     = { identifier ~ ("=" ~ "enum")? ~ "{" ~ schema_field* ~ "}" }
+schema_def     = { identifier ~ enum_marker? ~ "{" ~ schema_field* ~ "}" }
+enum_marker    = { "=" ~ "enum" }
 schema_field   = { identifier ~ (":" ~ type_expr ~ field_attrs?)? ~ ","? }
 type_expr      = { identifier ~ ("<" ~ type_expr ~ ("," ~ type_expr)* ~ ">")? ~ "[]"? }
 field_attrs    = { "[" ~ field_attr ~ ("," ~ field_attr)* ~ "]" }
@@ -83,7 +90,7 @@ regex_list       = { regex_literal ~ ("," ~ regex_literal)* }
 
 // ── @workflow Block ──
 workflow_block = { "@workflow" ~ identifier ~ "{" ~ workflow_body* ~ "}" }
-workflow_body  = { workflow_field | step_block | apply_contracts }
+workflow_body  = { step_block | apply_contracts | workflow_field }
 workflow_field = { identifier ~ ":" ~ value }
 apply_contracts = { "apply_contracts" ~ ":" ~ "[" ~ identifier_list ~ "]" }
 
@@ -96,7 +103,7 @@ step_body  = {
 step_field     = { identifier ~ ":" ~ value }
 output_binding = { "output" ~ "->" ~ variable }
 expect_block   = { "expect" ~ "{" ~ expect_stmt* ~ "}" }
-expect_stmt    = { expression ~ "=>" ~ (value | goto_expr | "continue" | "retry" ~ "(" ~ step_field* ~ ")") }
+expect_stmt    = { expression ~ "=>" ~ (goto_expr | "continue" | "retry" ~ "(" ~ step_field* ~ ")" | value) }
 goto_expr      = { "goto" ~ identifier ~ ("with" ~ "{" ~ step_field* ~ "}")? }
 
 // ── @query Block ──
@@ -126,6 +133,7 @@ primary_expr = {
     function_call
   | variable
   | string_literal
+  | regex_literal
   | number
   | boolean
   | identifier ~ "." ~ identifier_chain
@@ -151,8 +159,8 @@ assignment = { ("let" ~ identifier | variable) ~ "=" ~ value }
 
 // ── Values ──
 value = {
-    string_literal
-  | template_string
+    template_string
+  | string_literal
   | duration
   | number
   | boolean
@@ -170,9 +178,9 @@ identifier_list = { identifier ~ ("," ~ identifier)* }
 // ── Primitives ──
 identifier      = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | "-")* }
 variable        = @{ "$" ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
-string_literal  = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+string_literal  = @{ "\"" ~ ("\\\"" | "\\\\" | (!"\"" ~ ANY))* ~ "\"" }
 template_string = @{ "\"\"\"" ~ (!"\"\"\"" ~ ANY)* ~ "\"\"\"" }
 number          = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 boolean         = @{ "true" | "false" }
 duration        = @{ ASCII_DIGIT+ ~ ("ms" | "s" | "m" | "h") }
-regex_literal   = @{ "/" ~ (!"/" ~ ANY)+ ~ "/" ~ ("i" | "g" | "m")* }
+regex_literal   = @{ "/" ~ ("\\/" | (!"/" ~ ANY))+ ~ "/" ~ ("i" | "g" | "m")* }

@@ -1,0 +1,2 @@
+# Publish the generated runtime even when wasm-pack creates a catch-all .gitignore.
+.gitignore

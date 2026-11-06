@@ -1,5 +1,4 @@
 // tools/backends.js — clotho_backends: List supported compilation targets
-const { execFileSync } = require('child_process');
 
 const BACKENDS = [
     { name: 'Rust',       target: 'rust',   ext: '.n2rs', use: 'High-performance native runtime' },

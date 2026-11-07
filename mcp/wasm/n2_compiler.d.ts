@@ -2,6 +2,16 @@
 /* eslint-disable */
 
 /**
+ * A reusable Rust-regex predicate with explicit pattern, input and automaton limits.
+ */
+export class BoundedRegex {
+    free(): void;
+    [Symbol.dispose](): void;
+    constructor(pattern: string, flags: string);
+    test(input: string): boolean;
+}
+
+/**
  * Generate the requested language using the same validated backends as the CLI.
  */
 export function compile_n2_wasm(source: string, target: string, compiled_at: string): string;

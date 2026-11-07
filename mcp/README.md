@@ -1,4 +1,4 @@
-# N2 Clotho 4.0
+# N2 Clotho 4.1
 
 A `.n2` parser, validator, state-machine simulator, registry query engine and multi-target code generator. The Node.js package includes a WASM compiler and five MCP tools. Native Rust builds provide a CLI.
 
@@ -9,7 +9,7 @@ A `.n2` parser, validator, state-machine simulator, registry query engine and mu
 Requires Node.js 20.19 or later for the bundled WASM runtime.
 
 ```sh
-npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.0.1/n2-clotho-4.0.1.tgz
+npm install https://github.com/choihyunsus/n2-clotho/releases/download/v4.1.0/n2-clotho-4.1.0.tgz
 ```
 
 Configure an MCP client to run `node` with the installed `node_modules/n2-clotho/server.js` absolute path. The default transport is stdio.
@@ -39,6 +39,22 @@ console.log(python);
 
 The host must call generated transition and rule-check functions at the relevant application boundaries. Results depend on those integration points and the rules supplied.
 
+## Bounded runtime predicates
+
+The Node.js library exports `BoundedRegex` backed by Rust's Unicode regular-expression engine. The native Rust API is `n2_compiler::predicate::BoundedPredicate`.
+
+```js
+const { BoundedRegex } = require('n2-clotho');
+const word = new BoundedRegex('^\\w+$', 'u');
+try {
+  console.log(word.test('한글_123')); // true
+} finally {
+  word.free();
+}
+```
+
+Patterns are limited to 4 KiB of UTF-8, inputs to 1 MiB, and compiled automata and DFA caches to 64 KiB each. Invalid or oversized patterns fail explicitly. The flags `i`, `m` and `s` enable case folding, multiline anchors and dot matching across newlines. Matching is stateless, including with `g`, and Unicode classes apply by default, including with `u`. Lookaround and backreferences produce errors. Call `free()` when finished. This runtime API follows Rust regex semantics. Generated code follows the checked capabilities of its target language.
+
 ## Supported behavior
 
 | Area | Available behavior |
@@ -66,7 +82,7 @@ Standalone code generation rejects executable rule checks/actions, conditional c
 
 Compilation tools accept inline source or a local source path. They return generated text. The native CLI writes output files next to the selected input. MCP compilation runs native fallback in a temporary directory and cleans it afterward. A partially failed batch sets `isError` and preserves successful target outputs.
 
-Input sources are limited to 1 MiB. Inspection is limited to supported compiled-file extensions and 8 MiB. File access uses the MCP server's host account, so the embedding application owns workspace permissions.
+Input sources are limited to 1 MiB. Inspection and native fallback output reads are limited to supported compiled-file extensions and 8 MiB. Source and inspected files must contain well-formed UTF-8 without NUL. File reads check regular-file handles and retain the byte limit if a file grows during reading. The public Node.js compiler entry points reject malformed UTF-16 before passing text to WASM. File access uses the MCP server's host account, so the embedding application owns workspace permissions.
 
 Optional SSE starts with `node server.js --sse` or `CLOTHO_TRANSPORT=sse`. It binds to `127.0.0.1`, defaults to port 3200, accepts one active client and permits a new client after disconnect. `CLOTHO_PORT` selects the port. `/health` reports the active compiler. Foreign Host and Origin headers are rejected.
 
@@ -81,7 +97,7 @@ Native builds require Rust 1.98 or later.
 ```sh
 git clone https://github.com/choihyunsus/n2-clotho.git
 cd n2-clotho
-git checkout v4.0.1
+git checkout v4.1.0
 cargo test --locked --manifest-path compiler/Cargo.toml
 cargo build --locked --manifest-path compiler/Cargo.toml --bin n2-compiler
 cd mcp
@@ -97,7 +113,7 @@ To rebuild the bundled WASM, run from the repository root with a Rust 1.98+ tool
 node scripts/build-wasm.cjs
 ```
 
-Release checks cover 50 Rust tests, 13 Node tests including actual stdio/SSE transports, native fallback, and 22 language execution probe checks across all six targets. These checks cover the tested fixtures and declared subset.
+Release checks cover 52 Rust tests and 19 Node tests including actual stdio/SSE transports, bounded predicates and UTF-8 file handling. The FIFO test runs on Linux and macOS and is skipped on Windows. A single packed archive is installed and tested on all three platforms, including strict CJS/ESM TypeScript consumers. Additional local probes cover native fallback and 22 language execution checks across all six targets. These checks cover the tested fixtures and declared subset.
 
 ## Migration from 3.x
 

@@ -8,6 +8,25 @@ use crate::contract::ContractRuntime;
 use crate::query::N2Registry;
 use crate::codegen::{BackendRegistry, CompilationMeta, extract_meta};
 
+/// A reusable Rust-regex predicate with explicit pattern, input and automaton limits.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub struct BoundedRegex(crate::predicate::BoundedPredicate);
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl BoundedRegex {
+    #[wasm_bindgen(constructor)]
+    pub fn new(pattern: &str, flags: &str) -> Result<BoundedRegex, JsValue> {
+        crate::predicate::BoundedPredicate::new(pattern, flags)
+            .map(Self).map_err(|error| JsValue::from_str(&error))
+    }
+
+    pub fn test(&self, input: &str) -> Result<bool, JsValue> {
+        self.0.test(input).map_err(|error| JsValue::from_str(&error))
+    }
+}
+
 /// Generate the requested language using the same validated backends as the CLI.
 #[cfg(feature = "wasm")]
 #[wasm_bindgen]

@@ -5,6 +5,7 @@ pub mod validator;
 pub mod contract;
 pub mod query;
 pub mod codegen;
+pub mod predicate;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

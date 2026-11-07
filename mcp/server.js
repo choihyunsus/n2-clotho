@@ -20,7 +20,7 @@ const nativeBin = path.resolve(__dirname, '..', 'compiler', 'target', 'release',
 );
 
 if (fs.existsSync(wasmPath)) {
-    compiler = { type: 'wasm', module: require(wasmPath), bin: null };
+    compiler = { type: 'wasm', module: require('./index'), bin: null };
 } else if (fs.existsSync(nativeBin)) {
     compiler = { type: 'native', module: null, bin: nativeBin };
 } else {

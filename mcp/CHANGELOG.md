@@ -1,3 +1,11 @@
+# 4.1.0
+
+- Add bounded Rust Unicode regular-expression predicates through native and WASM APIs.
+- Expose the predicate and compiler functions with CJS, ESM and TypeScript consumer coverage.
+- Reject malformed Unicode and NUL in compiler source before compilation.
+- Read regular UTF-8 files through bounded handles, including files that grow during a read.
+- Verify one release archive on Windows, Linux and macOS after source checks.
+
 # 4.0.1
 
 - Update the MCP runtime to SDK 1.32.2 and Zod 4.6.7, including patched transitive dependencies.

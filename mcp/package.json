@@ -1,10 +1,13 @@
 {
   "name": "n2-clotho",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "N2 rule parser, validator, state-machine runtime and six-target code generator with bundled WASM and MCP tools",
-  "main": "wasm/n2_compiler.js",
+  "main": "index.js",
   "type": "commonjs",
   "files": [
+    "index.js",
+    "index.d.ts",
+    "input.js",
     "server.js",
     "tools/*.js",
     "wasm/*.js",
@@ -50,5 +53,5 @@
   "devDependencies": {
     "typescript": "5.9.3"
   },
-  "types": "wasm/n2_compiler.d.ts"
+  "types": "index.d.ts"
 }

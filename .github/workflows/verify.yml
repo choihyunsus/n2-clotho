@@ -28,3 +28,51 @@ jobs:
       - run: npm audit --prefix mcp --omit=dev --audit-level=low
       - run: npm pack --dry-run
         working-directory: mcp
+  package:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - run: npm ci --prefix mcp
+      - run: mkdir ../release && npm pack --pack-destination ../release
+        working-directory: mcp
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: clotho-package
+          path: release/*.tgz
+          if-no-files-found: error
+  installed-consumer:
+    needs: package
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: clotho-package
+          path: release
+      - run: node -e "const fs=require('node:fs');fs.mkdirSync('consumer');fs.writeFileSync('consumer/package.json',JSON.stringify({name:'clotho-consumer',version:'1.0.0',private:true}));"
+      - run: npm install --no-fund ../release/n2-clotho-4.1.0.tgz typescript@5.9.3
+        working-directory: consumer
+      - run: node -e "require('node:fs').cpSync('mcp/tests','consumer/node_modules/n2-clotho/tests',{recursive:true});"
+      - run: node --test --test-timeout=45000 "tests/*.test.js"
+        working-directory: consumer/node_modules/n2-clotho
+      - run: npm exec --offline -- tsc --noEmit --module Node16 --moduleResolution Node16 --target ES2022 --strict node_modules/n2-clotho/tests/types/consumer.ts node_modules/n2-clotho/tests/types/consumer.mts
+        working-directory: consumer
+      - run: node --input-type=module -e "import {BoundedRegex,n2c_version} from 'n2-clotho';const predicate=new BoundedRegex('allowed','i');if(!predicate.test('ALLOWED')||!n2c_version().includes('4.1.0'))throw Error('ESM consumer failed');predicate.free();"
+        working-directory: consumer
+      - run: npm audit --omit=dev --audit-level=low
+        working-directory: consumer

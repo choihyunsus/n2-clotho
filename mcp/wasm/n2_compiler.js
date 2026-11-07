@@ -1,6 +1,54 @@
 /* @ts-self-types="./n2_compiler.d.ts" */
 
 /**
+ * A reusable Rust-regex predicate with explicit pattern, input and automaton limits.
+ */
+class BoundedRegex {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        BoundedRegexFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_boundedregex_free(ptr, 0);
+    }
+    /**
+     * @param {string} pattern
+     * @param {string} flags
+     */
+    constructor(pattern, flags) {
+        const ptr0 = passStringToWasm0(pattern, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(flags, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.boundedregex_new(ptr0, len0, ptr1, len1);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0] >>> 0;
+        BoundedRegexFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {string} input
+     * @returns {boolean}
+     */
+    test(input) {
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.boundedregex_test(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] !== 0;
+    }
+}
+if (Symbol.dispose) BoundedRegex.prototype[Symbol.dispose] = BoundedRegex.prototype.free;
+exports.BoundedRegex = BoundedRegex;
+
+/**
  * Generate the requested language using the same validated backends as the CLI.
  * @param {string} source
  * @param {string} target
@@ -165,6 +213,9 @@ exports.validate_n2_wasm = validate_n2_wasm;
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
+        __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
+            throw new Error(getStringFromWasm0(arg0, arg1));
+        },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
@@ -185,6 +236,10 @@ function __wbg_get_imports() {
         "./n2_compiler_bg.js": import0,
     };
 }
+
+const BoundedRegexFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_boundedregex_free(ptr >>> 0, 1));
 
 function getStringFromWasm0(ptr, len) {
     ptr = ptr >>> 0;

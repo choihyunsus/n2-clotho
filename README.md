@@ -6,7 +6,20 @@
 
 [한국어](README.ko.md)
 
+<p align="center">
+  <img src="https://github.com/choihyunsus/n2-clotho/raw/refs/heads/main/docs/images/comic.png" alt="Check rules written in the N2 format and generate code for supported programming languages." width="640">
+</p>
+
+Check rules written in the N2 format and generate code for supported programming languages.
+
+A story illustrating the feature, rather than a screenshot of the app.
+
+<details>
+<summary>View the workflow</summary>
+
 ![Write a rule → Check supported syntax → Generate code](https://github.com/choihyunsus/n2-clotho/raw/refs/heads/main/docs/images/overview.svg)
+
+</details>
 
 ## When to use it
 
